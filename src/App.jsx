@@ -320,7 +320,7 @@ const Chatbot = () => {
             chatHistory.push({ role: "user", parts: [{ text: userMessage.text }] }); // Use userMessage.text as input might be cleared
 
             const payload = { contents: chatHistory };
-            const apiKey = ""; // Canvas will provide this in runtime for gemini-2.0-flash
+            const apiKey = "AIzaSyBxWYwq0x4t2QHaZqxy2nnW6mQD8y--wxI"; // Canvas will provide this in runtime for gemini-2.0-flash
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             const response = await fetch(apiUrl, {
@@ -616,7 +616,7 @@ const ImageGenerator = () => {
 
         try {
             const payload = { instances: [{ prompt: prompt }], parameters: { "sampleCount": 1 } };
-            const apiKey = ""; // Canvas will provide this in runtime for imagen-3.0-generate-002
+            const apiKey = "AIzaSyBxWYwq0x4t2QHaZqxy2nnW6mQD8y--wxI"; // Canvas will provide this in runtime for imagen-3.0-generate-002
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
 
             const response = await fetch(apiUrl, {
