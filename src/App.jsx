@@ -917,7 +917,7 @@ const MeditationSection = () => {
                 audioConfig: { audioEncoding: 'MP3' }
             };
 
-            const apiKey = ""; // Canvas will provide this in runtime for text-to-speech
+            const apiKey = "AIzaSyCFlhCcqLMBxK5ckKcO30WjftmT1w_uj8Q"; // Canvas will provide this in runtime for text-to-speech
             const apiUrl = `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${apiKey}`;
 
             const response = await fetch(apiUrl, {
