@@ -1,4 +1,18 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+      })
+      .catch(err => {
+        console.log('ServiceWorker registration failed: ', err);
+      });
+  });
+}
+
+// Rest of your existing JavaScript code...
 
 // AppContext to manage global state like user ID and API keys
 const AppContext = createContext(null);
