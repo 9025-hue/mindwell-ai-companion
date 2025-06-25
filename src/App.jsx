@@ -102,7 +102,22 @@ const LoginPage = ({ onLoginSuccess }) => {
 
 // Dashboard Page Component
 const DashboardPage = () => {
-    const { userId } = useContext(AppContext);
+    const { userId, setMessage } = useContext(AppContext);
+
+    // Function to handle downloading the current HTML page
+    const handleDownloadApp = () => {
+        const htmlContent = document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'mindwell-companion-app.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setMessage('MindWell Companion app downloaded!');
+    };
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-start p-6 relative z-10">
@@ -111,6 +126,14 @@ const DashboardPage = () => {
                     MindWell AI Dashboard
                 </h1>
                 {userId && <p className="text-gray-300 mt-4 text-xl opacity-90 animate-fadeInUp">Welcome, <span className="font-bold text-purple-300">{userId}</span>!</p>}
+                {/* Download App Button */}
+                <button
+                    onClick={handleDownloadApp}
+                    className="mt-8 bg-gradient-to-r from-green-500 to-teal-600 text-white font-semibold py-3 px-8 rounded-xl shadow-lg hover:from-green-600 hover:to-teal-700 transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-green-400 focus:ring-opacity-75 flex items-center justify-center mx-auto text-lg"
+                >
+                    <svg className="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L10 11.586l2.293-2.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414zM10 3a1 1 0 011 1v7a1 1 0 11-2 0V4a1 1 0 011-1z" clipRule="evenodd"></path></svg>
+                    Download App
+                </button>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-7xl mt-12">
@@ -279,7 +302,7 @@ const Chatbot = () => {
             } catch (err) {
                 console.error("Error accessing microphone for chat:", err);
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice input for chat.');
+                    setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
                 } else {
                     setMessage(`Failed to access microphone for chat: ${err.message}`);
                 }
@@ -919,8 +942,6 @@ const MeditationSection = () => {
         return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    // Removed playGuidedMeditation and stopGuidedMeditation functions
-
 
     return (
         <div className="w-full text-white bg-gray-900 rounded-2xl shadow-inner-xl border border-gray-700 p-5">
@@ -1020,7 +1041,6 @@ const MeditationSection = () => {
                         Reset
                     </button>
                 </div>
-                {/* Removed audioRef for TTS playback */}
                 <audio ref={calmingSoundRef} className="hidden"></audio>
             </div>
         </div>
