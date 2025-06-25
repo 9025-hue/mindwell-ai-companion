@@ -1,1253 +1,1193 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 
-// Helper function to safely get data from localStorage
-const getFromLocalStorage = (key, defaultValue) => {
-  try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch (error) {
-    console.error(`Error reading from localStorage for key "${key}":`, error);
-    return defaultValue;
-  }
-};
-
-// Helper function to safely set data to localStorage
-const setToLocalStorage = (key, value) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.error(`Error writing to localStorage for key "${key}":`, error);
-  }
-};
-
-// IMPORTANT: Replace 'YOUR_GEMINI_API_KEY_HERE' with your actual API key
-// You can get one from Google AI Studio: https://makersuite.google.com/app/apikey
-const GEMINI_API_KEY = 'AIzaSyD5ixU-BJvvlEWqjPEB9L_SVUJg3u5ZbLs';
-
-// IMPORTANT: Replace 'YOUR_IMAGEN_API_KEY_HERE' with your actual API key
-// This is often the same key as Gemini, but keep them separate for clarity if needed.
-const IMAGEN_API_KEY = 'AIzaSyD5ixU-BJvvlEWqjPEB9L_SVUJg3u5ZbLs';
-
-// Supported Languages for Speech Recognition/Synthesis and AI Interaction
-const SUPPORTED_LANGUAGES = [
-  { name: 'English (US)', code: 'en-US' },
-  { name: 'Spanish (Spain)', code: 'es-ES' },
-  { name: 'French (France)', code: 'fr-FR' },
-  { name: 'German (Germany)', code: 'de-DE' },
-  { name: 'Italian (Italy)', code: 'it-IT' },
-  { name: 'Portuguese (Brazil)', code: 'pt-BR' },
-  { name: 'Japanese (Japan)', code: 'ja-JP' },
-  { name: 'Chinese (Mandarin)', code: 'zh-CN' }, // Simplified Chinese
-  { name: 'Korean (Korea)', code: 'ko-KR' },
-  { name: 'Hindi (India)', code: 'hi-IN' },
-  { name: 'Xhosa (South Africa)', code: 'xh-ZA' },
-  { name: 'Zulu (South Africa)', code: 'zu-ZA' },
-  { name: 'Tswana (South Africa)', code: 'ts-ZA' }, // Setswana
-  { name: 'Shona (Zimbabwe)', code: 'sn-ZW' },
-];
-
+// AppContext to manage global state like user ID and API keys
+const AppContext = createContext(null);
 
 // Main App Component
 const App = () => {
-  const [activeTab, setActiveTab] = useState('chat'); // 'chat', 'journal', 'moodboard', 'meditate', 'settings'
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalMessage, setModalMessage] = useState('');
-  const [modalType, setModalType] = useState('alert'); // 'alert' or 'confirm'
-  const [onModalConfirm, setOnModalConfirm] = useState(null);
+    // State to manage current page (login or dashboard)
+    const [currentPage, setCurrentPage] = useState('login');
+    // State for current user's session ID (not persistent)
+    const [userId, setUserId] = useState(null);
+    // State for displaying messages to the user (e.g., errors, success)
+    const [message, setMessage] = useState('');
+    // State for loading status
+    const [loading, setLoading] = useState(true); // Start true for initial setup
 
-  // New states for authentication
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!getFromLocalStorage('currentUser', null)); // Check if user exists in local storage on load
-  const [currentUser, setCurrentUser] = useState(() => getFromLocalStorage('currentUser', null)); // Stores { username, password }
+    useEffect(() => {
+        // Simulate an initialization process
+        const initializeApp = async () => {
+            // In a real application, you might fetch initial data or perform setup here
+            // For this demo, we just set loading to false after a short delay
+            setTimeout(() => {
+                setLoading(false);
+            }, 500); // Simulate a small loading time
+        };
 
-  // State for dynamic background
-  const [mainBackgroundClass, setMainBackgroundClass] = useState('bg-gray-800'); // Default background
+        initializeApp();
+    }, []); // Empty dependency array ensures this runs once on mount
 
-  // Map tabs to their background classes
-  const tabBackgrounds = {
-    chat: 'bg-gradient-to-br from-gray-800 to-indigo-900',
-    journal: 'bg-gradient-to-br from-gray-800 to-purple-900',
-    moodboard: 'bg-gradient-to-br from-gray-800 to-pink-900',
-    meditate: 'bg-gradient-to-br from-gray-800 to-red-900',
-  };
-
-  // Effect to update background when activeTab changes
-  useEffect(() => {
-    setMainBackgroundClass(tabBackgrounds[activeTab] || 'bg-gray-800');
-  }, [activeTab]);
-
-
-  // Callback to show custom modal
-  const showModal = useCallback((message, type = 'alert', onConfirm = null) => {
-    setModalMessage(message);
-    setModalType(type);
-    setOnModalConfirm(() => onConfirm);
-    setModalOpen(true);
-  }, []);
-
-  // Callback to close custom modal
-  const closeModal = useCallback(() => {
-    setModalOpen(false);
-    setModalMessage('');
-    setModalType('alert');
-    setOnModalConfirm(null);
-  }, []);
-
-  // Handle modal confirmation (for 'confirm' type modals)
-  const handleModalConfirm = () => {
-    if (onModalConfirm) {
-      onModalConfirm();
-    }
-    closeModal();
-  };
-
-  // Handle Logout
-  const handleLogout = () => {
-    showModal(
-      "Are you sure you want to log out?",
-      "confirm",
-      () => {
-        setIsLoggedIn(false);
-        setCurrentUser(null);
-        setToLocalStorage('currentUser', null); // Clear current user from local storage
-        setActiveTab('chat'); // Reset to default tab
-        // Optionally, clear all user-specific data from local storage here if desired
-        // localStorage.removeItem(`chatHistory_${currentUser.username}`); etc.
-      }
-    );
-  };
-
-
-  if (!isLoggedIn) {
-    return <Login setIsLoggedIn={setIsLoggedIn} setCurrentUser={setCurrentUser} showModal={showModal} />;
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 text-white font-inter flex flex-col md:flex-row rounded-lg shadow-2xl overflow-hidden p-4 m-4 md:m-8">
-      {/* Sidebar Navigation */}
-      <nav className="w-full md:w-64 bg-gray-800 p-6 rounded-t-lg md:rounded-l-lg md:rounded-tr-none shadow-lg flex md:flex-col items-center justify-center md:justify-start space-x-4 md:space-x-0 md:space-y-6 mb-4 md:mb-0">
-        <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-blue-500 mb-6 hidden md:block">MindMend AI</h1>
-        <div className="flex md:flex-col space-x-4 md:space-x-0 md:space-y-4 w-full justify-around md:justify-start">
-          {/* Using gradient colors for each NavItem */}
-          <NavItem icon="💬" label="Chat" isActive={activeTab === 'chat'} onClick={() => setActiveTab('chat')} activeClasses="bg-gradient-to-r from-teal-600 to-blue-600" inactiveClasses="bg-gray-700 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600" />
-          <NavItem icon="📝" label="Journal" isActive={activeTab === 'journal'} onClick={() => setActiveTab('journal')} activeClasses="bg-gradient-to-r from-blue-600 to-indigo-600" inactiveClasses="bg-gray-700 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600" />
-          <NavItem icon="🎨" label="Mood Board" isActive={activeTab === 'moodboard'} onClick={() => setActiveTab('moodboard')} activeClasses="bg-gradient-to-r from-purple-600 to-pink-600" inactiveClasses="bg-gray-700 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600" />
-          <NavItem icon="🧘" label="Meditate" isActive={activeTab === 'meditate'} onClick={() => setActiveTab('meditate')} activeClasses="bg-gradient-to-r from-pink-600 to-red-600" inactiveClasses="bg-gray-700 hover:bg-gradient-to-r hover:from-gray-700 hover:to-gray-600" />
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-3 p-3 rounded-lg transition-all duration-300 text-red-300 bg-red-800 hover:bg-red-700 hover:text-white mt-auto"
-          >
-            <span className="text-xl">🚪</span>
-            <span className="hidden md:block text-lg font-medium">Logout ({currentUser?.username})</span>
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content Area */}
-      <main className={`flex-1 p-8 rounded-b-lg md:rounded-r-lg md:rounded-bl-none shadow-lg flex flex-col overflow-auto transition-all duration-500 ease-in-out ${mainBackgroundClass}`}>
-        {activeTab === 'chat' && <Chatbot currentUser={currentUser} showModal={showModal} />}
-        {activeTab === 'journal' && <VoiceJournal currentUser={currentUser} showModal={showModal} />}
-        {activeTab === 'moodboard' && <MoodBoardGenerator currentUser={currentUser} showModal={showModal} />}
-        {activeTab === 'meditate' && <MeditationPlayer showModal={showModal} />}
-      </main>
-
-      {/* Custom Modal for Messages and Confirmations */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 p-6 rounded-lg shadow-2xl max-w-sm w-full text-center relative">
-            <button
-              onClick={closeModal}
-              className="absolute top-3 right-3 text-gray-400 hover:text-white text-2xl font-bold"
-            >
-              &times;
-            </button>
-            {modalMessage && (
-              <p className="text-lg text-white mb-6">{modalMessage}</p>
-            )}
-            {modalType === 'confirm' ? (
-              <div className="flex justify-center space-x-4">
-                <button
-                  onClick={handleModalConfirm}
-                  className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-md transition duration-300"
-                >
-                  Yes
-                </button>
-                <button
-                  onClick={closeModal}
-                  className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg shadow-md transition duration-300"
-                >
-                  No
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={closeModal}
-                className="mt-6 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition duration-300"
-              >
-                Close
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Login Component
-const Login = ({ setIsLoggedIn, setCurrentUser, showModal }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false); // To toggle between login and signup
-
-  const handleAuth = (e) => {
-    e.preventDefault(); // Prevent default form submission
-
-    if (!username || !password) {
-      showModal("Please enter both username and password.");
-      return;
-    }
-
-    const users = getFromLocalStorage('users', {}); // Stores { username: { password: 'xyz' } }
-
-    if (isRegistering) {
-      // Handle Registration
-      if (users[username]) {
-        showModal("Username already exists. Please choose a different one or log in.");
-      } else {
-        users[username] = { password: password };
-        setToLocalStorage('users', users);
-        const newUser = { username }; // Create the object to store
-        setCurrentUser(newUser);
-        setIsLoggedIn(true);
-        setToLocalStorage('currentUser', newUser); // Explicitly save to localStorage
-        showModal("Registration successful! You are now logged in.");
-      }
-    } else {
-      // Handle Login
-      if (users[username] && users[username].password === password) {
-        const loggedInUser = { username }; // Create the object to store
-        setCurrentUser(loggedInUser);
-        setIsLoggedIn(true);
-        setToLocalStorage('currentUser', loggedInUser); // Explicitly save to localStorage
-        showModal("Login successful!");
-      } else {
-        showModal("Invalid username or password.");
-      }
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 to-purple-900 text-white font-inter flex items-center justify-center p-4">
-      <div className="bg-gray-800 p-8 rounded-lg shadow-2xl w-full max-w-md text-center">
-        <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-blue-500 mb-6">
-          {isRegistering ? 'Sign Up' : 'Login'} to MindMend AI
-        </h2>
-        <form onSubmit={handleAuth} className="space-y-4">
-          <input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          />
-          <button
-            type="submit"
-            className="w-full p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition duration-300"
-          >
-            {isRegistering ? 'Register' : 'Login'}
-          </button>
-        </form>
-
-        <button
-          onClick={() => setIsRegistering(prev => !prev)}
-          className="mt-6 text-gray-300 hover:text-teal-400 transition duration-300"
-        >
-          {isRegistering ? 'Already have an account? Login' : 'Need an account? Sign Up'}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-
-// NavItem Component for Sidebar
-const NavItem = ({ icon, label, isActive, onClick, activeClasses, inactiveClasses }) => (
-  <button
-    className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-300 ${
-      isActive ? activeClasses : inactiveClasses
-    } text-white shadow-md`} // Added shadow-md for all nav items
-    onClick={onClick}
-  >
-    <span className="text-xl">{icon}</span>
-    <span className="hidden md:block text-lg font-medium">{label}</span>
-  </button>
-);
-
-// --- AI Companion Chatbot Component ---
-const Chatbot = ({ currentUser, showModal }) => {
-  const chatHistoryKey = `chatHistory_${currentUser.username}`;
-  const [messages, setMessages] = useState(() => getFromLocalStorage(chatHistoryKey, []));
-  const [input, setInput] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('en-US'); // New state for language
-  const messagesEndRef = useRef(null);
-  const recognitionRef = useRef(null);
-  const transcriptionTimeoutRef = useRef(null);
-
-  // Save chat history to localStorage whenever messages change
-  useEffect(() => {
-    setToLocalStorage(chatHistoryKey, messages);
-  }, [messages]);
-
-  // Scroll to bottom of messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Voice input functions
-  const startVoiceInput = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      showModal('Your browser does not support Web Speech API. Please use Chrome for this feature.');
-      return;
-    }
-
-    if (recognitionRef.current) {
-        recognitionRef.current.stop();
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
-    recognitionRef.current.continuous = true;
-    recognitionRef.current.interimResults = true;
-    recognitionRef.current.lang = selectedLanguage; // Use selected language
-
-    recognitionRef.current.onstart = () => {
-      setIsListening(true);
-      setInput('');
-      console.log('Voice input started for chat...');
-    };
-
-    recognitionRef.current.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-      setInput(finalTranscript + interimTranscript);
-
-      if (transcriptionTimeoutRef.current) {
-        clearTimeout(transcriptionTimeoutRef.current);
-      }
-      transcriptionTimeoutRef.current = setTimeout(() => {
-        if (isListening) {
-          stopVoiceInput();
-          if (input.trim() !== '') {
-            sendMessage(finalTranscript + interimTranscript);
-          }
-        }
-      }, 3000);
-    };
-
-    recognitionRef.current.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      setIsListening(false);
-      showModal(`Speech recognition error: ${event.error}. Please ensure microphone access is granted.`);
-    };
-
-    recognitionRef.current.onend = () => {
-      setIsListening(false);
-      console.log('Voice input ended for chat.');
-      if (input.trim() !== '' && !isSending) {
-        sendMessage(input.trim());
-      }
-    };
-
-    recognitionRef.current.start();
-  };
-
-  const stopVoiceInput = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    if (transcriptionTimeoutRef.current) {
-      clearTimeout(transcriptionTimeoutRef.current);
-    }
-    setIsListening(false);
-  };
-
-
-  const sendMessage = async (messageText = input.trim()) => {
-    if (messageText === '') return;
-
-    const userMessage = { role: 'user', text: messageText, timestamp: new Date().toISOString() };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsSending(true);
-
-    try {
-      let chatHistoryForGemini = messages.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
-      
-      // Prepend language instruction to the user's message for model compatibility
-      const languageInstruction = `Please respond in ${SUPPORTED_LANGUAGES.find(lang => lang.code === selectedLanguage)?.name || 'English'}. `;
-      const finalUserMessage = { role: 'user', parts: [{ text: languageInstruction + messageText }] };
-      chatHistoryForGemini.pop(); // Remove the last user message added for optimistic update
-      chatHistoryForGemini.push(finalUserMessage); // Add the user message with language instruction
-
-      const payload = { contents: chatHistoryForGemini };
-      const apiKey = GEMINI_API_KEY;
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API error: ${response.status} ${errorData.error?.message || response.statusText}`);
-      }
-
-      const result = await response.json();
-      const botResponseText = result.candidates && result.candidates.length > 0 &&
-                               result.candidates[0].content && result.candidates[0].content.parts &&
-                               result.candidates[0].content.parts.length > 0
-                               ? result.candidates[0].content.parts[0].text
-                               : "Sorry, I couldn't generate a response.";
-
-      const botMessage = { role: 'model', text: botResponseText, timestamp: new Date().toISOString() };
-      setMessages(prev => [...prev, botMessage]);
-
-    } catch (error) {
-      console.error("Error sending message to Gemini:", error);
-      const errorMessage = { role: 'model', text: `Error: ${error.message}. Please try again.`, timestamp: new Date().toISOString() };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full bg-gray-700 rounded-lg shadow-xl p-6">
-      <h2 className="text-2xl font-semibold mb-4 text-center text-teal-300">AI Companion Chat</h2>
-      <div className="mb-4">
-        <label htmlFor="language-select-chat" className="block text-gray-300 text-sm font-medium mb-1">Chat Language:</label>
-        <select
-          id="language-select-chat"
-          value={selectedLanguage}
-          onChange={(e) => setSelectedLanguage(e.target.value)}
-          className="w-full p-2 rounded-lg bg-gray-800 border border-gray-500 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-          disabled={isSending || isListening}
-        >
-          {SUPPORTED_LANGUAGES.map(lang => (
-            <option key={lang.code} value={lang.code}>
-              {lang.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar mb-4">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-400 mt-10">Start a conversation with your AI companion!</div>
-        )}
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`flex mb-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[70%] p-3 rounded-lg shadow-md ${
-                msg.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-br-none'
-                  : 'bg-gray-600 text-white rounded-bl-none'
-              }`}
-            >
-              <p>{msg.text}</p>
-              {msg.timestamp && (
-                <span className="text-xs text-gray-300 block mt-1">
-                  {new Date(msg.timestamp).toLocaleTimeString()}
-                </span>
-              )}
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-black text-white">
+                <div className="text-xl animate-pulse">Loading MindWell AI...</div>
             </div>
-          </div>
-        ))}
-        {isSending && (
-          <div className="flex justify-start mb-4">
-            <div className="max-w-[70%] p-3 rounded-lg shadow-md bg-gray-600 text-white rounded-bl-none">
-              <div className="flex items-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Thinking...
-              </div>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-      <div className="flex items-center space-x-3">
-        <button
-            onClick={isListening ? stopVoiceInput : startVoiceInput}
-            className={`p-3 rounded-lg shadow-md transition duration-300 ${
-                isListening ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-purple-500 hover:bg-purple-600'
-            }`}
-            aria-label={isListening ? "Stop Voice Input" : "Start Voice Input"}
-            disabled={isSending}
-        >
-            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                {isListening ? (
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.25 7.75A.75.75 0 008.5 8.5v3a.75.75 0 001.5 0v-3a.75.75 0 00-.75-.75z" clipRule="evenodd" />
-                ) : (
-                    <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+        );
+    }
+
+    return (
+        <AppContext.Provider value={{ userId, setUserId, setMessage }}>
+            <div className="min-h-screen bg-gradient-to-br from-fuchsia-900 via-purple-900 to-indigo-900 text-white font-inter relative overflow-hidden">
+                {/* Background circles for aesthetic appeal */}
+                <div className="absolute -top-20 -left-20 w-80 h-80 bg-purple-700 rounded-full mix-blend-multiply filter blur-xl opacity-50 animate-blob"></div>
+                <div className="absolute -bottom-20 -right-20 w-96 h-96 bg-indigo-700 rounded-full mix-blend-multiply filter blur-xl opacity-50 animate-blob animation-delay-2000"></div>
+                <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-fuchsia-700 rounded-full mix-blend-multiply filter blur-xl opacity-50 animate-blob animation-delay-4000"></div>
+
+
+                {message && (
+                    <div className="absolute top-8 left-1/2 -translate-x-1/2 p-4 bg-blue-600 text-white rounded-xl shadow-2xl z-50 animate-slideInDown transition-all duration-300">
+                        {message}
+                    </div>
                 )}
-            </svg>
-        </button>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && !isSending && sendMessage()}
-          placeholder={isListening ? "Listening..." : "Type your message..."}
-          className="flex-1 p-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
-          disabled={isSending || isListening}
-        />
-        <button
-          onClick={() => sendMessage()}
-          className="bg-teal-500 hover:bg-teal-600 text-white p-3 rounded-lg shadow-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isSending || input.trim() === ''}
-        >
-          {isSending ? (
-            <div className="flex items-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              Send
+                {currentPage === 'login' && <LoginPage onLoginSuccess={() => setCurrentPage('dashboard')} />}
+                {currentPage === 'dashboard' && <DashboardPage />}
             </div>
-          ) : (
-            'Send'
-          )}
-        </button>
-      </div>
-    </div>
-  );
+        </AppContext.Provider>
+    );
 };
 
-// --- Voice Journaling Component ---
-const VoiceJournal = ({ currentUser, showModal }) => {
-  const journalEntriesKey = `journalEntries_${currentUser.username}`;
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [journalEntries, setJournalEntries] = useState(() => getFromLocalStorage(journalEntriesKey, []));
-  const [sentimentAnalysis, setSentimentAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('en-US'); // New state for language
-  const recognitionRef = useRef(null);
-  const transcriptionTimeoutRef = useRef(null);
+// Login Page Component
+const LoginPage = ({ onLoginSuccess }) => {
+    const { setUserId, setMessage } = useContext(AppContext);
+    const [loading, setLoading] = useState(false);
 
-  // Save journal entries to localStorage whenever they change
-  useEffect(() => {
-    setToLocalStorage(journalEntriesKey, journalEntries);
-  }, [journalEntries]);
-
-  const startRecording = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      showModal('Your browser does not support Web Speech API. Please use Chrome for this feature.');
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognitionRef.current = new SpeechRecognition();
-    recognitionRef.current.continuous = true;
-    recognitionRef.current.interimResults = true;
-    recognitionRef.current.lang = selectedLanguage; // Use selected language
-
-    recognitionRef.current.onstart = () => {
-      setIsRecording(true);
-      setTranscript('');
-      setSentimentAnalysis(null);
-      console.log('Recording started...');
+    const handleGuestLogin = () => {
+        setLoading(true);
+        // Generate a simple session ID for guest user
+        const newUserId = `guest-${crypto.randomUUID().substring(0, 8)}`;
+        setUserId(newUserId);
+        setMessage(`Welcome, ${newUserId}!`);
+        setLoading(false);
+        onLoginSuccess(); // Navigate to dashboard
     };
 
-    recognitionRef.current.onresult = (event) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-      setTranscript(finalTranscript + interimTranscript);
-
-      // Reset the timeout on new speech input
-      if (transcriptionTimeoutRef.current) {
-        clearTimeout(transcriptionTimeoutRef.current);
-      }
-      transcriptionTimeoutRef.current = setTimeout(() => {
-        if (isRecording) { // Only stop if still recording
-          stopRecording();
-        }
-      }, 3000); // Stop after 3 seconds of silence
-    };
-
-    recognitionRef.current.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      setIsRecording(false);
-      showModal(`Speech recognition error: ${event.error}. Please ensure microphone access is granted.`);
-    };
-
-    recognitionRef.current.onend = () => {
-      setIsRecording(false);
-      console.log('Recording ended.');
-      if (transcript.trim() !== '') {
-        analyzeSentiment(transcript.trim());
-      }
-    };
-
-    recognitionRef.current.start();
-  };
-
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    if (transcriptionTimeoutRef.current) {
-      clearTimeout(transcriptionTimeoutRef.current);
-    }
-    setIsRecording(false);
-  };
-
-  const saveJournalEntry = () => {
-    if (transcript.trim() === '') return;
-
-    try {
-      const journalEntry = {
-        id: Date.now(), // Unique ID for the entry
-        text: transcript.trim(),
-        sentiment: sentimentAnalysis,
-        timestamp: new Date().toISOString(),
-      };
-      setJournalEntries(prev => [journalEntry, ...prev]); // Add new entry to the top
-      setTranscript('');
-      setSentimentAnalysis(null);
-      showModal("Journal entry saved!");
-    }
-    catch (error) {
-      console.error("Error saving journal entry:", error);
-      showModal("Failed to save journal entry. Please try again.");
-    }
-  };
-
-  const analyzeSentiment = async (textToAnalyze) => {
-    if (textToAnalyze.trim() === '') {
-      setSentimentAnalysis(null);
-      return;
-    }
-    setIsAnalyzing(true);
-    setSentimentAnalysis(null);
-
-    try {
-      // Instruct Gemini to analyze sentiment for the specific language
-      const prompt = `Analyze the sentiment of the following journal entry written in ${SUPPORTED_LANGUAGES.find(lang => lang.code === selectedLanguage)?.name || 'English'}. Categorize it as "Positive", "Neutral", or "Negative". Also, provide a very brief, empathetic summary of the underlying emotions or themes in a single sentence, in the same language as the entry.
-      Entry: "${textToAnalyze}"
-      Format: {"sentiment": "Category", "summary": "Brief summary"}`;
-
-      const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-      const payload = {
-          contents: chatHistory,
-          generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                  type: "OBJECT",
-                  properties: {
-                      "sentiment": { "type": "STRING" },
-                      "summary": { "type": "STRING" }
-                  },
-                  "propertyOrdering": ["sentiment", "summary"]
-              }
-          }
-      };
-      // Use the global GEMINI_API_KEY
-      const apiKey = GEMINI_API_KEY;
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API error: ${response.status} ${errorData.error?.message || response.statusText}`);
-      }
-
-      const result = await response.json();
-      const jsonString = result.candidates && result.candidates.length > 0 &&
-                         result.candidates[0].content && result.candidates[0].content.parts &&
-                         result.candidates[0].content.parts.length > 0
-                         ? result.candidates[0].content.parts[0].text
-                         : null;
-
-      if (jsonString) {
-        try {
-          const parsed = JSON.parse(jsonString);
-          setSentimentAnalysis(parsed);
-        } catch (jsonError) {
-          console.error("Error parsing sentiment JSON:", jsonError);
-          setSentimentAnalysis({ sentiment: "N/A", summary: "Could not parse analysis." });
-        }
-      } else {
-        setSentimentAnalysis({ sentiment: "N/A", summary: "No analysis available." });
-      }
-
-    } catch (error) {
-      console.error("Error analyzing sentiment with Gemini:", error);
-      setSentimentAnalysis({ sentiment: "Error", summary: `Failed to analyze: ${error.message}` });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full bg-gray-700 rounded-lg shadow-xl p-6">
-      <h2 className="text-2xl font-semibold mb-4 text-center text-teal-300">Voice Recorder & Journal</h2>
-
-      <div className="p-4 bg-gray-600 rounded-lg shadow-inner mb-6">
-        <div className="mb-4">
-          <label htmlFor="language-select-journal" className="block text-gray-300 text-sm font-medium mb-1">Journal Language:</label>
-          <select
-            id="language-select-journal"
-            value={selectedLanguage}
-            onChange={(e) => setSelectedLanguage(e.target.value)}
-            className="w-full p-2 rounded-lg bg-gray-800 border border-gray-500 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-            disabled={isRecording || isAnalyzing}
-          >
-            {SUPPORTED_LANGUAGES.map(lang => (
-              <option key={lang.code} value={lang.code}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-4 relative z-10">
+            <div className="bg-white bg-opacity-15 backdrop-filter backdrop-blur-lg rounded-3xl shadow-3xl p-8 md:p-14 w-full max-w-md border border-purple-500 transform transition-all duration-700 hover:scale-[1.02] hover:shadow-purple-glow">
+                <h1 className="text-5xl font-extrabold text-center text-white mb-6 tracking-wide drop-shadow-lg">
+                    MindWell AI
+                </h1>
+                <p className="text-white text-center mb-10 text-lg opacity-90 leading-relaxed">
+                    Your personal AI companion for mental wellness.
+                    Explore, reflect, and find inner peace.
+                </p>
+                <button
+                    onClick={handleGuestLogin}
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-semibold py-4 px-8 rounded-xl shadow-lg hover:from-purple-800 hover:to-indigo-800 transition-all duration-400 transform hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-400 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-xl tracking-wide"
+                >
+                    {loading ? 'Entering...' : 'Enter as Guest'}
+                </button>
+                <p className="text-gray-300 text-sm text-center mt-8 opacity-80">
+                    Data is stored only for this session. No personal information is collected.
+                </p>
+            </div>
         </div>
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          className={`p-4 rounded-full shadow-lg transition duration-300 ease-in-out transform ${
-            isRecording ? 'bg-red-600 hover:bg-red-700 animate-pulse' : 'bg-green-500 hover:bg-green-600'
-          }`}
-          aria-label={isRecording ? "Stop Recording" : "Start Recording"}
-        >
-          <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-            {isRecording ? (
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.25 7.75A.75.75 0 008.5 8.5v3a.75.75 0 001.5 0v-3a.75.75 0 00-.75-.75z" clipRule="evenodd" /> // Stop icon
-            ) : (
-              <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" /> // Microphone icon
-            )}
-          </svg>
-        </button>
-        <p className="mt-3 text-lg text-gray-300">{isRecording ? 'Recording...' : 'Click to record your thoughts'}</p>
-        <div className="w-full h-px bg-gray-500 my-4"></div>
-        <textarea
-          value={transcript}
-          onChange={(e) => setTranscript(e.target.value)}
-          placeholder="Your recording will be transcribed here, or you can type directly..."
-          className="w-full p-3 h-32 rounded-lg bg-gray-800 border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
-        ></textarea>
-        {sentimentAnalysis && (
-          <div className="mt-4 p-3 bg-gray-800 rounded-lg w-full text-center">
-            <h3 className="text-lg font-semibold text-purple-300">Sentiment Analysis:</h3>
-            <p className={`text-xl font-bold ${
-              sentimentAnalysis.sentiment === "Positive" ? "text-green-400" :
-              sentimentAnalysis.sentiment === "Negative" ? "text-red-400" :
-              "text-yellow-400"
-            }`}>
-              {sentimentAnalysis.sentiment}
-            </p>
-            <p className="text-gray-300 italic">{sentimentAnalysis.summary}</p>
-          </div>
-        )}
-        {isAnalyzing && (
-          <div className="mt-4 flex items-center text-teal-300">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-teal-300 mr-2"></div>
-            Analyzing sentiment...
-          </div>
-        )}
-        <div className="mt-4 flex space-x-4">
-          <button
-            onClick={() => analyzeSentiment(transcript)}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!transcript.trim() || isAnalyzing || isRecording}
-          >
-            Analyze Text
-          </button>
-          <button
-            onClick={saveJournalEntry}
-            className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!transcript.trim() || isRecording}
-          >
-            Save Entry
-          </button>
+    );
+};
+
+// Dashboard Page Component
+const DashboardPage = () => {
+    const { userId } = useContext(AppContext);
+
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-start p-6 relative z-10">
+            <header className="w-full max-w-5xl text-center py-8">
+                <h1 className="text-6xl font-extrabold text-white leading-tight tracking-tight drop-shadow-lg animate-fadeInDown">
+                    MindWell AI Dashboard
+                </h1>
+                {userId && <p className="text-gray-300 mt-4 text-xl opacity-90 animate-fadeInUp">Welcome, <span className="font-bold text-purple-300">{userId}</span>!</p>}
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-7xl mt-12">
+                {/* Chatbot Section */}
+                <Card title="Chat with AI" description="Get supportive responses and empathetic advice.">
+                    <Chatbot />
+                </Card>
+
+                {/* Journal Entry Section */}
+                <Card title="Voice Journal" description="Record your thoughts with intuitive speech-to-text.">
+                    <JournalEntry />
+                </Card>
+
+                {/* Image Generation Section */}
+                <Card title="Inspiring Images" description="Generate calming and uplifting visuals from your prompts.">
+                    <ImageGenerator />
+                </Card>
+
+                {/* New Meditation Section */}
+                <Card title="Meditation Space" description="Find calm and focus through guided practices and timers." large={true}>
+                    <MeditationSection />
+                </Card>
+
+                {/* Support Section */}
+                <Card title="User Support & Resources" description="Find answers to FAQs and essential external support." large={true}>
+                    <SupportSection />
+                </Card>
+            </div>
         </div>
-      </div>
-
-      {/* Journal History */}
-      <h3 className="text-xl font-semibold mb-3 text-teal-300">Past Entries</h3>
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-        {journalEntries.length === 0 ? (
-          <p className="text-center text-gray-400 mt-4">No journal entries yet.</p>
-        ) : (
-          journalEntries.map((entry) => (
-            <div key={entry.id} className="mb-4 p-4 bg-gray-600 rounded-lg shadow-md">
-              <p className="text-gray-200 text-sm mb-2">{new Date(entry.timestamp).toLocaleString()}</p>
-              <p className="text-white mb-2">{entry.text}</p>
-              {entry.sentiment && (
-                <div className="text-sm">
-                  <span className={`font-semibold ${
-                    entry.sentiment.sentiment === "Positive" ? "text-green-300" :
-                    entry.sentiment.sentiment === "Negative" ? "text-red-300" :
-                    "text-yellow-300"
-                  }`}>
-                    Sentiment: {entry.sentiment.sentiment}
-                  </span>
-                  <p className="text-gray-300 italic">{entry.sentiment.summary}</p>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+    );
 };
 
-// --- Mood Board Generator Component ---
-const MoodBoardGenerator = ({ currentUser, showModal }) => {
-  const moodBoardsKey = `moodBoards_${currentUser.username}`;
-  const [prompt, setPrompt] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [savedMoodBoards, setSavedMoodBoards] = useState(() => getFromLocalStorage(moodBoardsKey, []));
-  const [selectedImage, setSelectedImage] = useState(''); // For modal image view
-
-  // Save mood boards to localStorage whenever they change
-  useEffect(() => {
-    setToLocalStorage(moodBoardsKey, savedMoodBoards);
-  }, [savedMoodBoards]);
-
-  const openImageModal = (imgSrc) => {
-    setSelectedImage(imgSrc);
-    showModal(<img src={imgSrc} alt="Enlarged Mood Board" className="max-w-full h-auto rounded-lg mb-4" />, 'alert'); // Using alert modal to display image
-  };
-
-
-  const generateImage = async () => {
-    if (prompt.trim() === '') {
-      showModal("Please enter a description for your mood board image.");
-      return;
-    }
-    setIsGenerating(true);
-    setImageUrl(''); // Clear previous image
-
-    try {
-      const payload = { instances: { prompt: prompt.trim() }, parameters: { "sampleCount": 1 } };
-      // Use the global IMAGEN_API_KEY defined at the top of the file
-      const apiKey = IMAGEN_API_KEY;
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API error: ${response.status} ${errorData.error?.message || response.statusText}`);
-      }
-
-      const result = await response.json();
-      if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
-        const generatedImageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
-        setImageUrl(generatedImageUrl);
-      } else {
-        showModal("Failed to generate image. No valid image data received.");
-      }
-    } catch (error) {
-      console.error("Error generating image:", error);
-      showModal(`Error generating image: ${error.message}. Please try again.`);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const saveMoodBoard = () => {
-    if (!imageUrl) {
-      showModal("No image to save. Generate one first!");
-      return;
-    }
-    try {
-      const moodBoardEntry = {
-        id: Date.now(), // Unique ID for the entry
-        prompt: prompt.trim(),
-        imageUrl: imageUrl,
-        timestamp: new Date().toISOString(),
-      };
-      setSavedMoodBoards(prev => [moodBoardEntry, ...prev]); // Add new entry to the top
-      setPrompt('');
-      setImageUrl('');
-      showModal("Mood board saved successfully!");
-    } catch (error) {
-      console.error("Error saving mood board:", error);
-      showModal("Failed to save mood board. Please try again.");
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full bg-gray-700 rounded-lg shadow-xl p-6">
-      <h2 className="text-2xl font-semibold mb-4 text-center text-teal-300">AI Mood Board Creator</h2>
-
-      {/* Image Generation Controls */}
-      <div className="flex flex-col items-center mb-6 p-4 bg-gray-600 rounded-lg shadow-inner">
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Describe the mood or image you want to generate (e.g., 'calm forest, serene lake, sunrise')"
-          className="w-full p-3 rounded-lg bg-gray-800 border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 mb-4"
-          disabled={isGenerating}
-        />
-        <button
-          onClick={generateImage}
-          className="px-6 py-3 bg-teal-500 hover:bg-teal-600 text-white rounded-lg shadow-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center w-full md:w-auto"
-          disabled={isGenerating}
-        >
-          {isGenerating ? (
-            <>
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-              Generating...
-            </>
-          ) : (
-            'Generate Mood Image'
-          )}
-        </button>
-
-        {imageUrl && (
-          <div className="mt-6 w-full flex flex-col items-center">
-            <h3 className="text-xl font-semibold mb-3 text-purple-300">Generated Image:</h3>
-            <img
-              src={imageUrl}
-              alt="Generated Mood Board"
-              className="max-w-full h-auto rounded-lg shadow-xl border-2 border-gray-500 object-contain max-h-80"
-            />
-            <button
-              onClick={saveMoodBoard}
-              className="mt-4 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg shadow-md transition duration-300"
-            >
-              Save Mood Board
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Saved Mood Boards */}
-      <h3 className="text-xl font-semibold mb-3 text-teal-300">Your Saved Mood Boards</h3>
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {savedMoodBoards.length === 0 ? (
-          <p className="text-center text-gray-400 col-span-full mt-4">No mood boards saved yet.</p>
-        ) : (
-          savedMoodBoards.map((board) => (
-            <div key={board.id} className="bg-gray-600 rounded-lg shadow-md p-3 flex flex-col items-center">
-              <img
-                src={board.imageUrl}
-                alt={board.prompt}
-                className="w-full h-32 object-cover rounded-lg mb-2 cursor-pointer border border-gray-500"
-                onClick={() => openImageModal(board.imageUrl)}
-              />
-              <p className="text-sm text-gray-200 text-center mb-1 line-clamp-2">{board.prompt}</p>
-              <p className="text-xs text-gray-400">{new Date(board.timestamp).toLocaleDateString()}</p>
+// Reusable Card Component for Dashboard Sections
+const Card = ({ title, description, children, large }) => {
+    return (
+        <div className={`bg-white bg-opacity-10 backdrop-filter backdrop-blur-xl rounded-3xl shadow-3xl p-7 border border-gray-700 hover:border-purple-600 transition-all duration-500 transform hover:-translate-y-2 hover:shadow-purple-glow flex flex-col ${large ? 'md:col-span-2' : ''}`}>
+            <h2 className="text-3xl font-bold text-white mb-3 tracking-wide drop-shadow-md">{title}</h2>
+            <p className="text-gray-300 mb-6 text-lg opacity-90">{description}</p>
+            <div className="flex-1 flex flex-col">
+                {children}
             </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+        </div>
+    );
 };
 
-// --- Guided Meditation Player Component ---
-const MeditationPlayer = ({ showModal }) => {
-  const [meditationText, setMeditationText] = useState("Close your eyes gently. Take a deep breath in through your nose, feeling your belly rise. Exhale slowly through your mouth, letting go of any tension. Notice the stillness within you. You are safe. You are calm. You are at peace.");
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const synthesisRef = useRef(null);
-  const utteranceRef = useRef(null);
-  const [voiceList, setVoiceList] = useState([]);
-  const [selectedVoice, setSelectedVoice] = useState(null);
-  const [pitch, setPitch] = useState(1);
-  const [rate, setRate] = useState(1);
-  const [isGeneratingText, setIsGeneratingText] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('en-US'); // New state for language
-  const [voicesReady, setVoicesReady] = useState(false); // New state to track if voices have been populated
 
-  // Initialize SpeechSynthesis and get voices
-  useEffect(() => {
-    if ('speechSynthesis' in window) {
-      synthesisRef.current = window.speechSynthesis;
-      const populateVoices = () => {
-        const allVoices = synthesisRef.current.getVoices();
-        console.log("All available voices:", allVoices); // Log all voices
-        
-        // Filter voices by selected language, trying both exact match and locale prefix
-        const filteredVoices = allVoices.filter(voice => 
-          voice.lang === selectedLanguage || voice.lang.startsWith(selectedLanguage.substring(0, 2))
-        );
-        setVoiceList(filteredVoices);
-        setVoicesReady(true); // Mark voices as ready
+// Language options for Speech Recognition
+const languageOptions = [
+    { code: 'en-US', name: 'English (US)' },
+    { code: 'en-GB', name: 'English (UK)' },
+    { code: 'en-ZA', name: 'English (South Africa)' },
+    { code: 'af-ZA', name: 'Afrikaans (South Africa)' },
+    { code: 'zu-ZA', name: 'isiZulu (South Africa)' },
+    { code: 'xh-ZA', name: 'isiXhosa (South Africa)' },
+    { code: 'st-ZA', name: 'Sesotho (South Africa)' },
+    { code: 'tn-ZA', name: 'Setswana (South Africa)' },
+    { code: 'nso-ZA', name: 'Sepedi (South Africa)' },
+    { code: 'ts-ZA', name: 'Xitsonga (South Africa)' },
+    { code: 've-ZA', name: 'Tshivenda (South Africa)' },
+    { code: 'nr-ZA', name: 'isiNdebele (South Africa)' },
+    { code: 'ss-ZA', name: 'SiSwati (South Africa)' },
+    { code: 'fr-FR', name: 'French' },
+    { code: 'es-ES', name: 'Spanish' },
+    { code: 'de-DE', name: 'German' },
+];
 
-        // Attempt to set a default voice based on selected language and common providers
-        const defaultVoice = filteredVoices.find(voice => 
-          voice.lang === selectedLanguage && (voice.name.includes('Google') || voice.name.includes('Microsoft'))
-        ) || filteredVoices.find(voice => 
-          voice.lang.startsWith(selectedLanguage.substring(0, 2))
-        );
-        
-        if (defaultVoice) {
-          setSelectedVoice(defaultVoice.name);
-        } else if (filteredVoices.length > 0) {
-          setSelectedVoice(filteredVoices[0].name); // Fallback to first available filtered voice
+// Chatbot Component
+const Chatbot = () => {
+    const { setMessage } = useContext(AppContext);
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const messagesEndRef = useRef(null); // Ref for scrolling to the latest message
+
+    const [isRecording, setIsRecording] = useState(false);
+    const recognitionRef = useRef(null); // Ref to hold the SpeechRecognition object
+    const mediaStreamRef = useRef(null); // Ref to hold the media stream to stop it later
+    const [selectedLanguage, setSelectedLanguage] = useState('en-ZA'); // Default to English (South Africa)
+
+    // Scroll to bottom whenever messages update
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    // Speech Recognition setup for Chat
+    useEffect(() => {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            // setMessage('Speech Recognition API not supported by this browser for chat voice input.');
+            return; // Don't set message repeatedly, only once for journal
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+
+        recognition.continuous = true; // Continuous for chat input
+        recognition.interimResults = true; // Show interim results
+        recognition.lang = selectedLanguage;
+
+        recognition.onstart = () => {
+            setIsRecording(true);
+            setMessage('Chat recording started...');
+        };
+
+        recognition.onresult = (event) => {
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+            // Update input field with either final or interim, prioritizing final
+            setInput(finalTranscript || interimTranscript);
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error in chat:", event.error);
+            if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
+            } else {
+                setMessage(`Chat voice input error: ${event.error}`);
+            }
+            setIsRecording(false);
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+                mediaStreamRef.current = null;
+            }
+        };
+
+        recognition.onend = () => {
+            setIsRecording(false);
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+                mediaStreamRef.current = null;
+            }
+            setMessage('Chat recording ended.');
+        };
+
+        recognitionRef.current = recognition;
+
+        return () => {
+            if (recognitionRef.current && isRecording) {
+                recognitionRef.current.stop();
+            }
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+                mediaStreamRef.current = null;
+            }
+        };
+    }, [selectedLanguage]); // Re-run effect if language changes
+
+    const toggleVoiceInput = async () => {
+        if (isRecording) {
+            recognitionRef.current.stop();
         } else {
-            setSelectedVoice(null); // No voice for this language
-            // Only show modal if there are *no* voices at all, to avoid spamming
-            if (allVoices.length > 0) { // Check if any voices exist, but none for this language
-                showModal(`No specific speech synthesis voices found for "${SUPPORTED_LANGUAGES.find(lang => lang.code === selectedLanguage)?.name || selectedLanguage}". You might need to install language packs for your operating system or try a different browser.`, 'alert');
-            } else { // No voices at all
-                 showModal("No speech synthesis voices found on your system. Please ensure voices are installed and your browser supports Text-to-Speech.", 'alert');
+            setInput(''); // Clear input before starting new recording
+            setMessage('Requesting microphone access for chat...');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaStreamRef.current = stream;
+                setMessage('Microphone access granted. Start speaking for chat input...');
+                recognitionRef.current.start();
+            } catch (err) {
+                console.error("Error accessing microphone for chat:", err);
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice input for chat.');
+                } else {
+                    setMessage(`Failed to access microphone for chat: ${err.message}`);
+                }
+                setIsRecording(false);
             }
         }
-      };
-
-      // Ensure voices are loaded. Sometimes onvoiceschanged isn't triggered immediately.
-      // Call populateVoices directly and also listen for changes.
-      populateVoices(); 
-      if (synthesisRef.current.onvoiceschanged !== undefined) {
-        synthesisRef.current.onvoiceschanged = populateVoices;
-      }
-    } else {
-      showModal("Text-to-speech not supported in this browser.");
-    }
-
-    // Clean up
-    return () => {
-      if (synthesisRef.current && utteranceRef.current) {
-        synthesisRef.current.cancel();
-      }
-      if (synthesisRef.current && synthesisRef.current.onvoiceschanged) {
-          synthesisRef.current.onvoiceschanged = null;
-      }
-    };
-  }, [showModal, selectedLanguage]); // Re-run when selectedLanguage changes
-
-  const speakText = () => {
-    if (!synthesisRef.current || !meditationText || !selectedVoice) {
-        showModal("Please select a voice and ensure there is meditation text to speak.", 'alert');
-        return;
-    }
-
-    if (synthesisRef.current.speaking) {
-      synthesisRef.current.cancel(); // Stop current speech if any
-    }
-
-    const utterance = new SpeechSynthesisUtterance(meditationText);
-    utteranceRef.current = utterance; // Store reference to current utterance
-
-    const voice = voiceList.find(v => v.name === selectedVoice);
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang; // Set utterance language to match the voice
-    } else {
-        utterance.lang = selectedLanguage; // Fallback to selected language if no specific voice
-    }
-    utterance.pitch = pitch;
-    utterance.rate = rate;
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = (event) => {
-      console.error('SpeechSynthesisUtterance.onerror', event);
-      setIsSpeaking(false);
-      showModal(`Text-to-speech error: ${event.error}. Ensure a voice is available for the selected language.`, 'alert');
     };
 
-    synthesisRef.current.speak(utterance);
-  };
 
-  const stopSpeaking = () => {
-    if (synthesisRef.current && synthesisRef.current.speaking) {
-      synthesisRef.current.cancel();
-      setIsSpeaking(false);
-    }
-  };
+    const sendMessage = async () => {
+        if (!input.trim()) return;
 
-  const generateMeditationText = async () => {
-    setIsGeneratingText(true);
-    setMeditationText('');
-    stopSpeaking(); // Stop any ongoing speech
+        const userMessage = { role: "user", text: input, timestamp: new Date().toLocaleTimeString() };
+        setMessages(prev => [...prev, userMessage]);
+        setInput('');
+        setLoading(true);
+        setMessage('');
 
-    try {
-      // Instruct Gemini to generate meditation text in the selected language
-      const prompt = `Generate a short, calming guided meditation script (around 50-100 words) focusing on relaxation and presence. Write it in ${SUPPORTED_LANGUAGES.find(lang => lang.code === selectedLanguage)?.name || 'English'}.`;
-      const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-      const payload = { contents: chatHistory };
-      // Use the global GEMINI_API_KEY
-      const apiKey = GEMINI_API_KEY;
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+        // Stop recording if active when sending message
+        if (isRecording) {
+            recognitionRef.current.stop();
+        }
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+        try {
+            let chatHistory = messages.map(msg => ({ role: msg.role, parts: [{ text: msg.text }] }));
+            chatHistory.push({ role: "user", parts: [{ text: userMessage.text }] }); // Use userMessage.text as input might be cleared
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`API error: ${response.status} ${errorData.error?.message || response.statusText}`);
-      }
+            const payload = { contents: chatHistory };
+            const apiKey = "AIzaSyD5ixU-BJvvlEWqjPEB9L_SVUJg3u5ZbLs"; // Canvas will provide this in runtime for gemini-2.0-flash
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-      const result = await response.json();
-      const generatedText = result.candidates && result.candidates.length > 0 &&
-                            result.candidates[0].content && result.candidates[0].content.parts &&
-                            result.candidates[0].content.parts.length > 0
-                            ? result.candidates[0].content.parts[0].text
-                            : "Failed to generate new meditation text.";
-      setMeditationText(generatedText);
-    } catch (error) {
-      console.error("Error generating meditation text:", error);
-      setMeditationText("Failed to generate new meditation text. Please try again.");
-    } finally {
-      setIsGeneratingText(false);
-    }
-  };
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            }
 
-  return (
-    <div className="flex flex-col h-full bg-gray-700 rounded-lg shadow-xl p-6">
-      <h2 className="text-2xl font-semibold mb-4 text-center text-teal-300">Guided Meditations</h2>
+            const result = await response.json();
 
-      <div className="p-4 bg-gray-600 rounded-lg shadow-inner mb-6">
-        <div className="mb-4">
-          <label htmlFor="language-select-meditation" className="block text-gray-300 text-sm font-medium mb-1">Meditation Language:</label>
-          <select
-            id="language-select-meditation"
-            value={selectedLanguage}
-            onChange={(e) => { setSelectedLanguage(e.target.value); setVoicesReady(false); setVoiceList([]); }} // Reset voicesReady and voiceList on language change
-            className="w-full p-2 rounded-lg bg-gray-800 border border-gray-500 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-            disabled={isSpeaking || isGeneratingText}
-          >
-            {SUPPORTED_LANGUAGES.map(lang => (
-              <option key={lang.code} value={lang.code}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
+            if (result.candidates && result.candidates.length > 0 &&
+                result.candidates[0].content && result.candidates[0].content.parts &&
+                result.candidates[0].content.parts.length > 0) {
+                const botResponseText = result.candidates[0].content.parts[0].text;
+                setMessages(prev => [...prev, { role: "bot", text: botResponseText, timestamp: new Date().toLocaleTimeString() }]);
+            } else {
+                setMessage("AI response was empty or malformed.");
+            }
+        } catch (error) {
+            console.error("Error sending message to AI:", error);
+            setMessage(`Failed to get AI response: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-gray-900 rounded-2xl shadow-inner-xl border border-gray-700">
+            <div className="p-4 bg-gray-800 rounded-t-2xl">
+                <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="w-full p-2 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                >
+                    {languageOptions.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                            {lang.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
+                {messages.length === 0 && (
+                    <p className="text-gray-400 text-center italic mt-4">Start a conversation with your AI companion...</p>
+                )}
+                {messages.map((msg, index) => (
+                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`p-4 rounded-2xl max-w-[80%] md:max-w-[70%] shadow-lg transition-all duration-300 ${
+                            msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none animate-slideInRight' : 'bg-gray-700 text-gray-100 rounded-bl-none animate-slideInLeft'
+                        }`}>
+                            <p className="text-sm md:text-base break-words">{msg.text}</p>
+                            <span className="block text-xs text-right opacity-75 mt-1 text-gray-200">{msg.timestamp}</span>
+                        </div>
+                    </div>
+                ))}
+                {loading && (
+                    <div className="flex justify-start">
+                        <div className="p-4 rounded-2xl bg-gray-700 text-gray-100 rounded-bl-none shadow-lg animate-pulse-slow">
+                            <span className="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+                        </div>
+                    </div>
+                )}
+                <div ref={messagesEndRef} /> {/* Element to scroll into view */}
+            </div>
+            <div className="p-4 border-t border-gray-700 flex items-center gap-3 bg-gray-800 rounded-b-2xl">
+                <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !loading && sendMessage()}
+                    placeholder="Type your message or speak..."
+                    className="flex-1 p-3 rounded-xl bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-transparent focus:border-blue-500 transition-colors duration-300 text-base"
+                    disabled={loading}
+                />
+                <button
+                    onClick={toggleVoiceInput}
+                    disabled={loading}
+                    className={`p-3 rounded-full shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${
+                        isRecording ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' : 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-500'
+                    } text-white focus:outline-none focus:ring-4 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                    {isRecording ? (
+                        <svg className="w-6 h-6 animate-pulse" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7.001 7.001 0 006 6.93V17h-2a1 1 0 100 2h4a1 1 0 100-2h-2v-2.07z" clipRule="evenodd"></path></svg>
+                    ) : (
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
+                    )}
+                </button>
+                <button
+                    onClick={sendMessage}
+                    disabled={loading || !input.trim()}
+                    className="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l.643-.135a1 1 0 00.124-.105l3.41-3.41a1 1 0 011.414 0l3.41 3.41a1 1 0 00.124.105l.643.135a1 1 0 001.169-1.409l-7-14z"></path></svg>
+                </button>
+            </div>
         </div>
-        <h3 className="text-xl font-semibold mb-3 text-purple-300">Meditation Script:</h3>
-        <textarea
-          value={meditationText}
-          onChange={(e) => setMeditationText(e.target.value)}
-          placeholder="Enter your meditation script here..."
-          className="w-full p-3 h-40 rounded-lg bg-gray-800 border border-gray-500 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y mb-4"
-          disabled={isSpeaking || isGeneratingText}
-        ></textarea>
-
-        <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0 mb-4">
-          <div className="flex-1">
-            <label htmlFor="voice-select" className="block text-gray-300 text-sm font-medium mb-1">Select Voice:</label>
-            <select
-              id="voice-select"
-              value={selectedVoice || ''}
-              onChange={(e) => setSelectedVoice(e.target.value)}
-              className="w-full p-2 rounded-lg bg-gray-800 border border-gray-500 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
-              disabled={isSpeaking || isGeneratingText}
-            >
-              {!voicesReady && <option value="">Loading voices...</option>}
-              {voicesReady && voiceList.length === 0 && <option value="">No voices found (try another language)</option>}
-              {voiceList.map((voice) => (
-                <option key={voice.name} value={voice.name}>
-                  {voice.name} ({voice.lang}) {voice.default ? ' (Default)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex-1">
-            <label htmlFor="rate-input" className="block text-gray-300 text-sm font-medium mb-1">Speech Rate: {rate.toFixed(1)}</label>
-            <input
-              id="rate-input"
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.1"
-              value={rate}
-              onChange={(e) => setRate(parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-500 rounded-lg appearance-none cursor-pointer range-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              disabled={isSpeaking || isGeneratingText}
-            />
-          </div>
-          <div className="flex-1">
-            <label htmlFor="pitch-input" className="block text-gray-300 text-sm font-medium mb-1">Pitch: {pitch.toFixed(1)}</label>
-            <input
-              id="pitch-input"
-              type="range"
-              min="0"
-              max="2"
-              step="0.1"
-              value={pitch}
-              onChange={(e) => setPitch(parseFloat(e.target.value))}
-              className="w-full h-2 bg-gray-500 rounded-lg appearance-none cursor-pointer range-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              disabled={isSpeaking || isGeneratingText}
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-center space-x-4 mt-4">
-          <button
-            onClick={generateMeditationText}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            disabled={isSpeaking || isGeneratingText}
-          >
-            {isGeneratingText ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Generating...
-              </>
-            ) : (
-              'Generate New Script'
-            )}
-          </button>
-          <button
-            onClick={isSpeaking ? stopSpeaking : speakText}
-            className={`px-6 py-3 rounded-lg shadow-md transition duration-300 ${
-              isSpeaking ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-500 hover:bg-teal-600'
-            } text-white disabled:opacity-50 disabled:cursor-not-allowed`}
-            disabled={!meditationText || isGeneratingText || !selectedVoice} // Disable if no voice is selected
-          >
-            {isSpeaking ? 'Stop Meditation' : 'Start Meditation'}
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-8 text-center text-gray-400 text-sm">
-        <p>Take a moment to relax and find your inner peace.</p>
-        <p>Focus on your breath, listen to the words, and let go of any distractions.</p>
-      </div>
-    </div>
-  );
+    );
 };
 
-export default App;
+// Journal Entry Component (Voice to Text)
+const JournalEntry = () => {
+    const { setMessage } = useContext(AppContext);
+    const [isRecording, setIsRecording] = useState(false);
+    const [transcript, setTranscript] = useState('');
+    const [journalEntries, setJournalEntries] = useState([]);
+    const recognitionRef = useRef(null); // Ref to hold the SpeechRecognition object
+    const mediaStreamRef = useRef(null); // Ref to hold the media stream to stop it later
+    const [selectedLanguage, setSelectedLanguage] = useState('en-ZA'); // Default to English (South Africa)
+
+
+    useEffect(() => {
+        // Initialize SpeechRecognition on component mount
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            setMessage('Speech Recognition API not supported by this browser.');
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+
+        recognition.continuous = false; // Stop after a single utterance for journal
+        recognition.interimResults = false; // Only return final results for journal
+        recognition.lang = selectedLanguage;
+
+        recognition.onstart = () => {
+            setIsRecording(true);
+            setTranscript(''); // Clear previous transcript
+            setMessage('Recording started...');
+        };
+
+        recognition.onresult = (event) => {
+            const currentTranscript = Array.from(event.results)
+                .map(result => result[0].transcript)
+                .join('');
+            setTranscript(currentTranscript);
+            setMessage('Recording finished. Processing...');
+        };
+
+        recognition.onerror = (event) => {
+            console.error("Speech recognition error in journal:", event.error);
+            if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
+            } else {
+                setMessage(`Speech recognition error: ${event.error}`);
+            }
+            setIsRecording(false);
+            // Stop media stream if there was an error
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+                mediaStreamRef.current = null;
+            }
+        };
+
+        recognition.onend = () => {
+            setIsRecording(false);
+            // Stop media stream when recognition ends
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+                mediaStreamRef.current = null;
+            }
+
+            if (transcript.trim()) {
+                // Add the new entry to the in-memory list
+                setJournalEntries(prev => [...prev, { text: transcript.trim(), timestamp: new Date().toLocaleString() }]);
+                setMessage('Journal entry saved for this session!');
+            } else if (recognitionRef.current && recognitionRef.current.readyState !== 'listening') { // Only show 'No speech detected' if recording actually stopped
+                setMessage('No speech detected.');
+            }
+        };
+
+        recognitionRef.current = recognition;
+
+        // Cleanup: stop recognition and media stream if component unmounts while recording
+        return () => {
+            if (recognitionRef.current && isRecording) {
+                recognitionRef.current.stop();
+            }
+            if (mediaStreamRef.current) {
+                mediaStreamRef.current.getTracks().forEach(track => track.stop());
+                mediaStreamRef.current = null;
+            }
+        };
+    }, [selectedLanguage]); // Re-run effect if language changes
+
+    const toggleRecording = async () => {
+        if (isRecording) {
+            recognitionRef.current.stop();
+        } else {
+            setTranscript(''); // Clear transcript before starting new recording
+            setMessage('Requesting microphone access...'); // Set message when attempting to start
+
+            try {
+                // Request microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaStreamRef.current = stream; // Store the stream to stop it later
+                setMessage('Microphone access granted. Starting recording...');
+                recognitionRef.current.start();
+            } catch (err) {
+                console.error("Error accessing microphone:", err);
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice journaling.');
+                } else {
+                    setMessage(`Failed to access microphone: ${err.message}`);
+                }
+                setIsRecording(false); // Ensure recording state is off
+            }
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-gray-900 rounded-2xl shadow-inner-xl border border-gray-700 p-4">
+            <div className="mb-4">
+                <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="w-full p-2 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-300"
+                >
+                    {languageOptions.map((lang) => (
+                        <option key={lang.code} value={lang.code}>
+                            {lang.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar mb-4 bg-gray-800 rounded-lg p-3 border border-gray-700">
+                {journalEntries.length === 0 ? (
+                    <p className="text-gray-400 text-center italic mt-4 text-sm">Your journal entries will appear here.</p>
+                ) : (
+                    <div className="space-y-3">
+                        {journalEntries.map((entry, index) => (
+                            <div key={index} className="bg-gray-700 p-4 rounded-xl shadow-md transition-all duration-300 hover:shadow-lg">
+                                <p className="text-gray-200 text-sm md:text-base break-words">{entry.text}</p>
+                                <span className="block text-xs text-gray-400 text-right mt-1">{entry.timestamp}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div className="flex flex-col items-center mt-auto gap-3">
+                <textarea
+                    value={transcript}
+                    readOnly
+                    placeholder="Speak to see your transcript here..."
+                    className="w-full h-28 p-3 rounded-xl bg-gray-700 text-white placeholder-gray-400 focus:outline-none resize-none border border-transparent focus:ring-2 focus:ring-indigo-500 transition-colors duration-300 text-base"
+                />
+                <button
+                    onClick={toggleRecording}
+                    className={`w-full py-3 px-6 rounded-xl shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${
+                        isRecording ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' : 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                    } text-white font-semibold focus:outline-none focus:ring-4 focus:ring-opacity-75`}
+                >
+                    {isRecording ? (
+                        <div className="flex items-center justify-center">
+                            <svg className="w-6 h-6 mr-2 animate-pulse" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7.001 7.001 0 006 6.93V17h-2a1 1 0 100 2h4a1 1 0 100-2h-2v-2.07z" clipRule="evenodd"></path></svg>
+                            Stop Recording
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center">
+                            <svg className="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
+                            Start Recording
+                        </div>
+                    )}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// Image Generator Component
+const ImageGenerator = () => {
+    const { setMessage } = useContext(AppContext);
+    const [prompt, setPrompt] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [generatedImages, setGeneratedImages] = useState([]); // In-memory storage for images
+
+    const generateImage = async () => {
+        if (!prompt.trim()) {
+            setMessage('Please enter a prompt for the image.');
+            return;
+        }
+
+        setLoading(true);
+        setImageUrl(''); // Clear previous image
+        setMessage('Generating image...');
+
+        try {
+            const payload = { instances: [{ prompt: prompt }], parameters: { "sampleCount": 1 } };
+            const apiKey = "AIzaSyD5ixU-BJvvlEWqjPEB9L_SVUJg3u5ZbLs"; // Canvas will provide this in runtime for imagen-3.0-generate-002
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
+                const newImageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                setImageUrl(newImageUrl);
+                // Prepend new image to the list
+                setGeneratedImages(prev => [{ url: newImageUrl, prompt: prompt, timestamp: new Date().toLocaleString() }, ...prev]);
+                setMessage('Image generated successfully!');
+            } else {
+                setMessage("Image generation failed or response was empty.");
+            }
+        } catch (error) {
+            console.error("Error generating image:", error);
+            setMessage(`Failed to generate image: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const downloadImage = (imgUrl, promptText, timestamp) => {
+        const link = document.createElement('a');
+        link.href = imgUrl;
+        // Create a user-friendly filename
+        const filename = `mindwell-image-${promptText.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}.png`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setMessage(`Downloaded "${filename}"`);
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-gray-900 rounded-2xl shadow-inner-xl border border-gray-700 p-4">
+            <div className="flex-1 overflow-y-auto custom-scrollbar mb-4 bg-gray-800 rounded-lg p-3 border border-gray-700 space-y-4">
+                {generatedImages.length === 0 ? (
+                    <p className="text-gray-400 text-center italic mt-4 text-sm">Generated images will appear here.</p>
+                ) : (
+                    generatedImages.map((img, index) => (
+                        <div key={index} className="bg-gray-700 p-3 rounded-xl shadow-md flex flex-col items-center group transition-all duration-300 hover:shadow-xl hover:scale-[1.02] relative overflow-hidden">
+                             <img src={img.url} alt={`Generated from "${img.prompt}"`} className="w-full h-48 object-cover rounded-lg mb-3 transform transition-transform duration-300 group-hover:scale-105" />
+                            <p className="text-gray-300 text-sm text-center break-words opacity-90 mb-2">{img.prompt}</p>
+                            <span className="block text-xs text-gray-400 text-right w-full mb-3 opacity-75">{img.timestamp}</span>
+                            <button
+                                onClick={() => downloadImage(img.url, img.prompt, img.timestamp)}
+                                className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-600 transition-colors duration-200 text-sm flex items-center justify-center w-full"
+                            >
+                                <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L10 11.586l2.293-2.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414zM10 3a1 1 0 011 1v7a1 1 0 11-2 0V4a1 1 0 011-1z" clipRule="evenodd"></path></svg>
+                                Download
+                            </button>
+                        </div>
+                    ))
+                )}
+            </div>
+            <div className="flex flex-col items-center mt-auto gap-3">
+                {loading && (
+                    <div className="text-blue-400 animate-pulse-slow mb-2 text-sm">Generating image, please wait...</div>
+                )}
+                {/* The currently displayed single image preview */}
+                {imageUrl && (
+                    <img src={imageUrl} alt="Generated result" className="w-full max-h-48 object-contain rounded-lg mb-3 shadow-xl border border-blue-500 animate-fadeIn" />
+                )}
+                <input
+                    type="text"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !loading && generateImage()}
+                    placeholder="e.g., 'calm forest with soft light'"
+                    className="w-full p-3 rounded-xl bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-transparent focus:border-blue-500 transition-colors duration-300 text-base"
+                    disabled={loading}
+                />
+                <button
+                    onClick={generateImage}
+                    disabled={loading || !prompt.trim()}
+                    className="w-full bg-purple-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-purple-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-base"
+                >
+                    Generate Image
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// New SupportSection Component
+const SupportSection = () => {
+    const [openSection, setOpenSection] = useState(null); // State to manage which section is open
+
+    const toggleSection = (sectionName) => {
+        setOpenSection(openSection === sectionName ? null : sectionName);
+    };
+
+    const sectionClass = "bg-gray-900 rounded-2xl shadow-inner-xl border border-gray-700";
+    const buttonClass = "w-full text-left p-4 flex justify-between items-center bg-gray-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors duration-300 hover:bg-gray-700 shadow-md";
+    const contentClass = "p-5 bg-gray-800 rounded-b-2xl border-t border-gray-700";
+    const linkClass = "text-blue-400 hover:underline transition-colors duration-200";
+
+    return (
+        <div className="w-full text-white space-y-4">
+            {/* FAQ Section */}
+            <div className={sectionClass}>
+                <button
+                    className={buttonClass}
+                    onClick={() => toggleSection('faq')}
+                >
+                    <h3 className="text-xl font-bold">Frequently Asked Questions (FAQ)</h3>
+                    <svg className={`w-6 h-6 transform transition-transform duration-300 ${openSection === 'faq' ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
+                </button>
+                {openSection === 'faq' && (
+                    <div className={contentClass}>
+                        <h4 className="font-semibold text-lg mb-2">How do I use the Chat with AI feature?</h4>
+                        <p className="mb-4 text-gray-300 text-sm leading-relaxed">
+                            Simply type your message into the input box and press Enter or click the send button. You can also click the microphone icon to speak your message, and it will be transcribed into the input field. The AI is designed to offer supportive and empathetic responses.
+                        </p>
+                        <h4 className="font-semibold text-lg mb-2">What is the Voice Journal for?</h4>
+                        <p className="mb-4 text-gray-300 text-sm leading-relaxed">
+                            The Voice Journal allows you to record your thoughts and feelings using your voice. The app will transcribe your speech into text, creating a digital journal entry for your reflection. Remember, data is currently stored only for the current session.
+                        </p>
+                        <h4 className="font-semibold text-lg mb-2">How can I generate inspiring images?</h4>
+                        <p className="mb-4 text-gray-300 text-sm leading-relaxed">
+                            In the "Inspiring Images" section, type a descriptive prompt (e.g., "calm forest with soft light," "peaceful sunset over mountains") into the input field and click "Generate Image." The AI will create a visual based on your description.
+                        </p>
+                        <h4 className="font-semibold text-lg mb-2">My microphone isn't working. What should I do?</h4>
+                        <p className="text-gray-300 text-sm leading-relaxed">
+                            If you encounter a "Microphone access denied" error, please check your browser's site settings to ensure that microphone access is granted for this application. You might need to refresh the page after adjusting permissions.
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            {/* Wellness Tips Section */}
+            <div className={sectionClass}>
+                <button
+                    className={buttonClass}
+                    onClick={() => toggleSection('tips')}
+                >
+                    <h3 className="text-xl font-bold">Wellness Tips</h3>
+                    <svg className={`w-6 h-6 transform transition-transform duration-300 ${openSection === 'tips' ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
+                </button>
+                {openSection === 'tips' && (
+                    <div className={contentClass}>
+                        <p className="mb-4 text-gray-300 text-sm leading-relaxed">Here are some general tips for promoting mental wellness:</p>
+                        <ul className="list-disc list-inside space-y-2 text-gray-300 text-sm">
+                            <li>**Mindful Breathing:** Take a few deep breaths when feeling overwhelmed. Inhale slowly through your nose, hold for a count, and exhale slowly through your mouth.</li>
+                            <li>**Stay Connected:** Reach out to friends, family, or support groups. Sharing your feelings can be incredibly helpful.</li>
+                            <li>**Regular Exercise:** Physical activity can significantly boost your mood and reduce stress. Even a short walk can make a difference.</li>
+                            <li>**Balanced Diet:** Fuel your body with nutritious foods. What you eat can affect your energy levels and mood.</li>
+                            <li>**Sufficient Sleep:** Aim for 7-9 hours of quality sleep per night. Sleep deprivation can impact your mental state.</li>
+                            <li>**Limit Screen Time:** Take breaks from digital devices, especially before bedtime.</li>
+                            <li>**Engage in Hobbies:** Dedicate time to activities you enjoy and that bring you a sense of accomplishment or relaxation.</li>
+                            <li>**Practice Gratitude:** Regularly reflect on things you are thankful for. This can shift your perspective positively.</li>
+                        </ul>
+                    </div>
+                )}
+            </div>
+
+            {/* External Resources Section */}
+            <div className={sectionClass}>
+                <button
+                    className={buttonClass}
+                    onClick={() => toggleSection('resources')}
+                >
+                    <h3 className="text-xl font-bold">External Resources</h3>
+                    <svg className={`w-6 h-6 transform transition-transform duration-300 ${openSection === 'resources' ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
+                </button>
+                {openSection === 'resources' && (
+                    <div className={contentClass}>
+                        <p className="mb-4 text-gray-300 text-sm leading-relaxed">If you are in distress or need professional help, please reach out to these resources:</p>
+                        <ul className="list-disc list-inside space-y-2 text-gray-300 text-sm">
+                            <li>
+                                **South African Depression and Anxiety Group (SADAG)**:
+                                <br />
+                                <a href="https://www.sadag.org/" target="_blank" rel="noopener noreferrer" className={linkClass}>Website</a> | Helpline: 0800 21 22 23 (8am-8pm), 0800 456 789 (24hr), or SMS 31393
+                            </li>
+                            <li>
+                                **Lifeline Southern Africa**:
+                                <br />
+                                <a href="https://www.lifeline.org.za/" target="_blank" rel="noopener noreferrer" className={linkClass}>Website</a> | Crisis Line: 0861 322 322
+                            </li>
+                            <li>
+                                **Childline South Africa**: (for children and concerned adults)
+                                <br />
+                                <a href="https://www.childline.org.za/" target="_blank" rel="noopener noreferrer" className={linkClass}>Website</a> | Helpline: 08000 55 555
+                            </li>
+                            <li>
+                                **National Institute of Mental Health (NIMH) - US (General Info)**:
+                                <br />
+                                <a href="https://www.nimh.nih.gov/health/find-help/index.shtml" target="_blank" rel="noopener noreferrer" className={linkClass}>Find Help</a>
+                            </li>
+                        </ul>
+                        <p className="mt-4 italic text-gray-400 text-xs">
+                            Disclaimer: MindWell AI is a support tool and not a substitute for professional medical advice, diagnosis, or treatment. If you are experiencing a mental health crisis, please contact a qualified healthcare professional or emergency services immediately.
+                        </p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// New MeditationSection Component
+const MeditationSection = () => {
+    const { setMessage } = useContext(AppContext);
+    const [meditationDuration, setMeditationDuration] = useState(5); // Default to 5 minutes
+    const [timeRemaining, setTimeRemaining] = useState(0); // Time in seconds
+    const [isRunning, setIsRunning] = useState(false);
+    const timerRef = useRef(null);
+    const audioRef = useRef(new Audio()); // Audio element for TTS playback
+    const calmingSoundRef = useRef(new Audio()); // Audio element for calming sound playback
+
+    const [ttsLoading, setTtsLoading] = useState(false);
+    const [ttsLanguage, setTtsLanguage] = useState('en-ZA');
+    const [ttsGender, setTtsGender] = useState('FEMALE'); // Default to female
+
+    const [selectedCalmingSound, setSelectedCalmingSound] = useState(''); // Stores the URL of the selected calming sound
+    const [calmingSoundVolume, setCalmingSoundVolume] = useState(0.5); // Default volume for calming sound
+
+    // Calming sound options (placeholder URLs - replace with actual paths in a real app)
+    const calmingSounds = [
+        { name: 'None', url: '' },
+        { name: 'Rain', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' }, // Placeholder
+        { name: 'Forest', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' }, // Placeholder
+        { name: 'Ocean Waves', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' }, // Placeholder
+        { name: 'Zen Chime', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' }, // Placeholder
+    ];
+
+    // Guided meditation script
+    const guidedMeditationScript = `
+        Find a comfortable position, either sitting or lying down. Gently close your eyes or soften your gaze.
+
+        Bring your attention to your breath. Feel the gentle rise and fall of your abdomen, or the sensation of air entering and leaving your nostrils. There's no need to change anything, just observe.
+
+        As thoughts arise, simply acknowledge them without judgment. Imagine them as clouds passing in the sky. Let them drift by, and gently bring your attention back to your breath.
+
+        Briefly scan your body. Notice any areas of tension, and on each exhale, imagine those tensions softening and releasing.
+
+        Allow yourself to rest in this present moment. Feel a sense of calm and peace washing over you. Remind yourself that you are safe and complete, just as you are.
+
+        When you're ready, slowly deepen your breath. Wiggle your fingers and toes. Gently open your eyes, bringing this sense of peace back into your day.
+    `;
+
+    // Language options for Text-to-Speech (more specific for TTS voices)
+    const ttsLanguageOptions = [
+        { code: 'en-US', name: 'English (US)', voices: [{ type: 'FEMALE', name: 'en-US-Standard-C' }, { type: 'MALE', name: 'en-US-Standard-D' }] },
+        { code: 'en-GB', name: 'English (UK)', voices: [{ type: 'FEMALE', name: 'en-GB-Standard-A' }, { type: 'MALE', name: 'en-GB-Standard-B' }] },
+        { code: 'en-AU', name: 'English (Australia)', voices: [{ type: 'FEMALE', name: 'en-AU-Standard-A' }, { type: 'MALE', name: 'en-AU-Standard-B' }] },
+        { code: 'en-ZA', name: 'English (South Africa)', voices: [{ type: 'FEMALE', name: 'en-ZA-Standard-A' }, { type: 'MALE', name: 'en-ZA-Standard-B' }] }, // Placeholder, actual voices may vary
+        { code: 'af-ZA', name: 'Afrikaans (South Africa)', voices: [{ type: 'FEMALE', name: 'af-ZA-Standard-A' }, { type: 'MALE', name: 'af-ZA-Standard-B' }] }, // Placeholder
+        { code: 'zu-ZA', name: 'isiZulu (South Africa)', voices: [{ type: 'FEMALE', name: 'zu-ZA-Standard-A' }, { type: 'MALE', name: 'zu-ZA-Standard-B' }] }, // Placeholder
+        { code: 'xh-ZA', name: 'isiXhosa (South Africa)', voices: [{ type: 'FEMALE', name: 'xh-ZA-Standard-A' }, { type: 'MALE', name: 'xh-ZA-Standard-B' }] }, // Placeholder
+        { code: 'fr-FR', name: 'French (France)', voices: [{ type: 'FEMALE', name: 'fr-FR-Standard-A' }, { type: 'MALE', name: 'fr-FR-Standard-B' }] },
+        { code: 'es-ES', name: 'Spanish (Spain)', voices: [{ type: 'FEMALE', name: 'es-ES-Standard-A' }, { type: 'MALE', name: 'es-ES-Standard-B' }] },
+        { code: 'de-DE', name: 'German (Germany)', voices: [{ type: 'FEMALE', name: 'de-DE-Standard-A' }, { type: 'MALE', name: 'de-DE-Standard-B' }] },
+    ];
+
+    // Get the full voice name based on language code and gender
+    const getVoiceName = (langCode, gender) => {
+        const lang = ttsLanguageOptions.find(option => option.code === langCode);
+        if (lang) {
+            const voice = lang.voices.find(v => v.type === gender);
+            return voice ? voice.name : lang.voices[0].name; // Fallback to first available voice
+        }
+        return 'en-US-Standard-C'; // Default fallback
+    };
+
+
+    useEffect(() => {
+        if (isRunning && timeRemaining > 0) {
+            timerRef.current = setInterval(() => {
+                setTimeRemaining((prevTime) => prevTime - 1);
+            }, 1000);
+            if (selectedCalmingSound && calmingSoundRef.current.paused) {
+                calmingSoundRef.current.play();
+            }
+        } else if (timeRemaining === 0 && isRunning) {
+            setIsRunning(false);
+            clearInterval(timerRef.current);
+            setMessage('Meditation session complete! Good job.');
+            if (calmingSoundRef.current) {
+                calmingSoundRef.current.pause();
+                calmingSoundRef.current.currentTime = 0;
+            }
+        } else if (!isRunning && calmingSoundRef.current) {
+            // If timer is paused/stopped, pause calming sound
+            calmingSoundRef.current.pause();
+        }
+
+        return () => clearInterval(timerRef.current);
+    }, [isRunning, timeRemaining, selectedCalmingSound]);
+
+    // Update calming sound source and volume when selection or volume changes
+    useEffect(() => {
+        if (calmingSoundRef.current) {
+            calmingSoundRef.current.src = selectedCalmingSound;
+            calmingSoundRef.current.loop = true; // Ensure it loops
+            calmingSoundRef.current.volume = calmingSoundVolume;
+            if (isRunning && selectedCalmingSound) { // Only play if timer is running and a sound is selected
+                calmingSoundRef.current.play();
+            } else {
+                calmingSoundRef.current.pause();
+            }
+        }
+    }, [selectedCalmingSound, calmingSoundVolume, isRunning]);
+
+
+    const startMeditationTimer = () => {
+        if (meditationDuration > 0) {
+            setTimeRemaining(meditationDuration * 60);
+            setIsRunning(true);
+            setMessage(`Starting ${meditationDuration}-minute meditation...`);
+            if (selectedCalmingSound) {
+                calmingSoundRef.current.play();
+            }
+        } else {
+            setMessage('Please set a duration greater than 0.');
+        }
+    };
+
+    const pauseMeditationTimer = () => {
+        setIsRunning(false);
+        clearInterval(timerRef.current);
+        setMessage('Meditation paused.');
+        if (calmingSoundRef.current) {
+            calmingSoundRef.current.pause();
+        }
+    };
+
+    const resetMeditationTimer = () => {
+        setIsRunning(false);
+        clearInterval(timerRef.current);
+        setTimeRemaining(meditationDuration * 60); // Reset to initial duration
+        setMessage('Meditation reset.');
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            audioRef.current.src = ''; // Clear audio source
+        }
+        if (calmingSoundRef.current) {
+            calmingSoundRef.current.pause();
+            calmingSoundRef.current.currentTime = 0;
+        }
+    };
+
+    const formatTime = (seconds) => {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const playGuidedMeditation = async () => {
+        setTtsLoading(true);
+        setMessage('Generating voiceover...');
+        // Pause calming sound if playing during guided meditation
+        if (calmingSoundRef.current) {
+            calmingSoundRef.current.pause();
+        }
+
+        try {
+            const voiceName = getVoiceName(ttsLanguage, ttsGender);
+
+            const payload = {
+                input: { text: guidedMeditationScript },
+                voice: { languageCode: ttsLanguage, name: voiceName, ssmlGender: ttsGender },
+                audioConfig: { audioEncoding: 'MP3' }
+            };
+
+            const apiKey = ""; // Canvas will provide this in runtime for text-to-speech
+            const apiUrl = `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${apiKey}`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`TTS API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            }
+
+            const result = await response.json();
+            if (result.audioContent) {
+                const audioBlob = new Blob([Uint8Array.from(atob(result.audioContent), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+
+                audioRef.current.src = audioUrl;
+                audioRef.current.play();
+                setMessage('Guided meditation playing...');
+
+                // Revoke object URL after audio ends to free up memory
+                audioRef.current.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    setMessage('Guided meditation finished.');
+                    // Resume calming sound if timer is still running
+                    if (isRunning && selectedCalmingSound) {
+                        calmingSoundRef.current.play();
+                    }
+                };
+            } else {
+                setMessage("Failed to generate audio content.");
+            }
+        } catch (error) {
+            console.error("Error generating or playing TTS:", error);
+            setMessage(`Failed to play guided meditation: ${error.message}`);
+            // Ensure calming sound resumes if an error occurs and timer is running
+            if (isRunning && selectedCalmingSound) {
+                calmingSoundRef.current.play();
+            }
+        } finally {
+            setTtsLoading(false);
+        }
+    };
+
+    const stopGuidedMeditation = () => {
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            setMessage('Guided meditation stopped.');
+            // Resume calming sound if timer is still running
+            if (isRunning && selectedCalmingSound) {
+                calmingSoundRef.current.play();
+            }
+        }
+    };
+
+
+    return (
+        <div className="w-full text-white bg-gray-900 rounded-2xl shadow-inner-xl border border-gray-700 p-5">
+            <div className="mb-6 w-full text-center">
+                <h3 className="text-2xl font-bold mb-3 drop-shadow-md">Benefits of Meditation</h3>
+                <p className="text-gray-300 text-sm leading-relaxed opacity-90">
+                    Meditation offers a powerful way to reduce stress, improve focus, and cultivate inner peace. Regular practice can lead to a new perspective on stressful situations, increased self-awareness, and a reduction in negative emotions. It can also contribute to better sleep and overall emotional well-being.
+                </p>
+                <p className="text-gray-300 mt-2 text-sm leading-relaxed opacity-90">
+                    By focusing on your breath and observing thoughts without judgment, you can train your mind to be more present and less reactive to daily challenges.
+                </p>
+            </div>
+
+            <div className="w-full mb-6 p-5 bg-gray-800 rounded-2xl shadow-md flex flex-col border border-gray-700">
+                <h3 className="text-2xl font-bold text-center mb-4 drop-shadow-md">Guided Meditation</h3>
+                <p className="text-gray-200 italic mb-5 text-center text-sm opacity-90">
+                    Find a comfortable position, either sitting or lying down. Gently close your eyes or soften your gaze.
+                </p>
+                <ol className="list-decimal list-inside space-y-3 text-gray-300 mb-6 text-sm leading-relaxed">
+                    <li>**Notice Your Breath:** Bring your attention to your breath. Feel the gentle rise and fall of your abdomen, or the sensation of air entering and leaving your nostrils. There's no need to change anything, just observe.</li>
+                    <li>**Acknowledge Thoughts:** As thoughts arise, simply acknowledge them without judgment. Imagine them as clouds passing in the sky. Let them drift by, and gently bring your attention back to your breath.</li>
+                    <li>**Body Scan:** Briefly scan your body. Notice any areas of tension, and on each exhale, imagine those tensions softening and releasing.</li>
+                    <li>**Cultivate Peace:** Allow yourself to rest in this present moment. Feel a sense of calm and peace washing over you. Remind yourself that you are safe and complete, just as you are.</li>
+                    <li>**Gentle Return:** When you're ready, slowly deepen your breath. Wiggle your fingers and toes. Gently open your eyes, bringing this sense of peace back into your day.</li>
+                </ol>
+
+                <div className="flex flex-col gap-4 w-full">
+                    <label htmlFor="tts-language" className="text-gray-300 text-base font-medium">Voice Language:</label>
+                    <select
+                        id="tts-language"
+                        value={ttsLanguage}
+                        onChange={(e) => setTtsLanguage(e.target.value)}
+                        className="w-full p-2.5 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300 text-base"
+                    >
+                        {ttsLanguageOptions.map((lang) => (
+                            <option key={lang.code} value={lang.code}>
+                                {lang.name}
+                            </option>
+                        ))}
+                    </select>
+
+                    <label htmlFor="tts-gender" className="text-gray-300 text-base font-medium">Voice Gender:</label>
+                    <select
+                        id="tts-gender"
+                        value={ttsGender}
+                        onChange={(e) => setTtsGender(e.target.value)}
+                        className="w-full p-2.5 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300 text-base"
+                    >
+                        {/* Dynamically show genders based on selected language's available voices */}
+                        {ttsLanguageOptions.find(lang => lang.code === ttsLanguage)?.voices.map(voice => (
+                            <option key={voice.type} value={voice.type}>
+                                {voice.type === 'FEMALE' ? 'Female' : 'Male'}
+                            </option>
+                        )) || <option value="FEMALE">Female</option>} {/* Fallback if no voices found */}
+                    </select>
+
+                    <div className="flex justify-center gap-4 mt-5">
+                        <button
+                            onClick={playGuidedMeditation}
+                            disabled={ttsLoading}
+                            className="bg-purple-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-purple-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-base"
+                        >
+                            {ttsLoading ? 'Generating...' : 'Play Voiceover'}
+                        </button>
+                        <button
+                            onClick={stopGuidedMeditation}
+                            disabled={!audioRef.current.src || ttsLoading}
+                            className="bg-gray-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-gray-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-base"
+                        >
+                            Stop Voiceover
+                        </button>
+                    </div>
+                    {/* Hidden audio element for playback */}
+                    <audio ref={audioRef} className="hidden"></audio>
+                </div>
+            </div>
+
+            <div className="w-full p-5 bg-gray-800 rounded-2xl shadow-md flex flex-col items-center border border-gray-700">
+                <h3 className="text-2xl font-bold mb-4 drop-shadow-md">Meditation Timer</h3>
+                <div className="flex items-center space-x-3 mb-5">
+                    <label htmlFor="meditation-duration" className="text-gray-300 text-lg font-medium">Duration (minutes):</label>
+                    <input
+                        id="meditation-duration"
+                        type="number"
+                        min="1"
+                        value={meditationDuration}
+                        onChange={(e) => setMeditationDuration(parseInt(e.target.value) || 0)}
+                        className="w-24 p-2.5 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300 text-lg text-center"
+                        disabled={isRunning}
+                    />
+                </div>
+
+                {/* Calming Sounds Selection */}
+                <div className="flex flex-col items-center w-full mb-5">
+                    <label htmlFor="calming-sound-select" className="text-gray-300 text-base font-medium mb-2">Calming Sound:</label>
+                    <select
+                        id="calming-sound-select"
+                        value={selectedCalmingSound}
+                        onChange={(e) => setSelectedCalmingSound(e.target.value)}
+                        className="w-full p-2.5 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300 text-base"
+                    >
+                        {calmingSounds.map((sound) => (
+                            <option key={sound.name} value={sound.url}>
+                                {sound.name}
+                            </option>
+                        ))}
+                    </select>
+                    <label htmlFor="calming-sound-volume" className="text-gray-300 text-base font-medium mt-4 mb-2">Volume:</label>
+                    <input
+                        id="calming-sound-volume"
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={calmingSoundVolume}
+                        onChange={(e) => setCalmingSoundVolume(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer range-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    />
+                </div>
+
+                <div className="text-7xl font-mono text-yellow-300 mb-7 drop-shadow-lg animate-fadeIn">
+                    {formatTime(timeRemaining || meditationDuration * 60)}
+                </div>
+                <div className="flex space-x-4">
+                    {!isRunning ? (
+                        <button
+                            onClick={startMeditationTimer}
+                            className="bg-green-600 text-white font-semibold py-3 px-7 rounded-xl shadow-lg hover:bg-green-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-base"
+                            disabled={meditationDuration <= 0}
+                        >
+                            Start
+                        </button>
+                    ) : (
+                        <button
+                            onClick={pauseMeditationTimer}
+                            className="bg-orange-600 text-white font-semibold py-3 px-7 rounded-xl shadow-lg hover:bg-orange-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-orange-500 focus:ring-opacity-75 text-base"
+                        >
+                            Pause
+                        </button>
+                    )}
+                    <button
+                        onClick={resetMeditationTimer}
+                        className="bg-red-600 text-white font-semibold py-3 px-7 rounded-xl shadow-lg hover:bg-red-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-75 text-base"
+                    >
+                        Reset
+                    </button>
+                </div>
+                {/* Hidden audio element for calming sound playback */}
+                <audio ref={calmingSoundRef} className="hidden"></audio>
+            </div>
+        </div>
+    );
+};
+
+
+export default App; // Export the main App component
