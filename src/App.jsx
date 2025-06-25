@@ -1,37 +1,106 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-// reportWebVitals();
-// AppContext to manage global state like user ID and API keys
+// Firebase Imports
+import { initializeApp } from 'firebase/app';
+import * as FirebaseAuth from 'firebase/auth'; // Import all auth functions as a namespace
+
+// AppContext to manage global state like user ID, Firebase instances, and messages
 const AppContext = createContext(null);
 
 // Main App Component
 const App = () => {
-    // State to manage current page (login or dashboard)
-    const [currentPage, setCurrentPage] = useState('login');
-    // State for current user's session ID (not persistent)
-    const [userId, setUserId] = useState(null);
-    // State for displaying messages to the user (e.g., errors, success)
-    const [message, setMessage] = useState('');
-    // State for loading status
-    const [loading, setLoading] = useState(true); // Start true for initial setup
+    // Firebase states
+    const [firebaseApp, setFirebaseApp] = useState(null);
+    const [auth, setAuth] = useState(null);
+    const [isAuthReady, setIsAuthReady] = useState(false); // Indicates if Firebase Auth is initialized and user state is known
 
+    // App UI states
+    const [currentPage, setCurrentPage] = useState('login');
+    const [userId, setUserId] = useState(null); // Firebase UID will be stored here
+    const [message, setMessage] = useState('');
+    const [loading, setLoading] = useState(true); // Initial app loading
+
+    // Firebase Initialization and Authentication Listener
     useEffect(() => {
-        // Simulate an initialization process
-        const initializeApp = async () => {
-            // In a real application, you might fetch initial data or perform setup here
-            // For this demo, we just set loading to false after a short delay
-            setTimeout(() => {
+        const initFirebase = async () => {
+            try {
+                // Firebase config is expected to be a global variable from the Canvas environment
+                const firebaseConfig = typeof __firebase_config !== 'undefined' 
+                                       ? JSON.parse(__firebase_config) 
+                                       : null;
+
+                if (!firebaseConfig || !firebaseConfig.apiKey) {
+                    console.error("Firebase config not found or invalid. Please ensure __firebase_config is correctly provided.");
+                    setMessage("Firebase not configured. AI features will not work.");
+                    // Proceed without Firebase auth if config is missing, but features will be limited
+                    setLoading(false);
+                    setIsAuthReady(true);
+                    return;
+                }
+
+                const app = initializeApp(firebaseConfig);
+                const currentAuth = FirebaseAuth.getAuth(app); // Use FirebaseAuth.getAuth
+
+                setFirebaseApp(app);
+                setAuth(currentAuth);
+
+                // Listen for authentication state changes
+                const unsubscribe = FirebaseAuth.onAuthStateChanged(currentAuth, async (user) => { // Use FirebaseAuth.onAuthStateChanged
+                    if (user) {
+                        setUserId(user.uid);
+                        setCurrentPage('dashboard');
+                        setMessage(`Signed in as: ${user.email || user.uid}`);
+                    } else {
+                        setUserId(null);
+                        setCurrentPage('login');
+                        setMessage('Please sign in or use a magic link.');
+                        // Attempt anonymous sign-in if no user and no initial token (for Canvas)
+                        if (typeof __initial_auth_token === 'undefined') {
+                            try {
+                                await FirebaseAuth.signInAnonymously(currentAuth); // Use FirebaseAuth.signInAnonymously
+                                // Anonymous user handled by onAuthStateChanged if successful
+                            } catch (anonError) {
+                                console.error("Anonymous sign-in failed:", anonError);
+                                setMessage("Could not sign in anonymously. Functionality may be limited.");
+                            }
+                        }
+                    }
+                    setIsAuthReady(true); // Auth state is now known
+                    setLoading(false); // App is ready after auth check
+                });
+
+                // Handle initial custom token sign-in for Canvas if available
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
+                        // Ensure signInWithCustomToken is available before calling
+                        if (typeof FirebaseAuth.signInWithCustomToken === 'function') {
+                            await FirebaseAuth.signInWithCustomToken(currentAuth, __initial_auth_token); // Use FirebaseAuth.signInWithCustomToken
+                            setMessage("Signed in with initial token.");
+                        } else {
+                            console.warn("FirebaseAuth.signInWithCustomToken is not available in this environment.");
+                            setMessage("Custom token sign-in skipped: Function not available.");
+                            // Fallback to anonymous if custom token is intended but function is missing
+                            await FirebaseAuth.signInAnonymously(currentAuth);
+                        }
+                    } catch (tokenError) {
+                        console.error("Custom token sign-in failed:", tokenError);
+                        setMessage("Initial token sign-in failed. Please try again.");
+                    }
+                }
+
+                return () => unsubscribe(); // Cleanup auth listener on unmount
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                setMessage(`Error initializing app: ${error.message}`);
                 setLoading(false);
-            }, 500); // Simulate a small loading time
+                setIsAuthReady(true);
+            }
         };
 
-        initializeApp();
-    }, []); // Empty dependency array ensures this runs once on mount
+        initFirebase();
+    }, []); // Empty dependency array means this runs once on mount
 
-    if (loading) {
+    if (loading || !isAuthReady) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-black text-white">
                 <div className="text-xl animate-pulse">Loading MindWell AI...</div>
@@ -40,7 +109,7 @@ const App = () => {
     }
 
     return (
-        <AppContext.Provider value={{ userId, setUserId, setMessage }}>
+        <AppContext.Provider value={{ userId, setUserId, setMessage, auth, firebaseApp }}>
             <div className="min-h-screen bg-gradient-to-br from-fuchsia-900 via-purple-900 to-indigo-900 text-white font-inter relative overflow-hidden">
                 {/* Background circles for aesthetic appeal */}
                 <div className="absolute -top-20 -left-20 w-80 h-80 bg-purple-700 rounded-full mix-blend-multiply filter blur-xl opacity-50 animate-blob"></div>
@@ -62,17 +131,73 @@ const App = () => {
 
 // Login Page Component
 const LoginPage = ({ onLoginSuccess }) => {
-    const { setUserId, setMessage } = useContext(AppContext);
+    const { setUserId, setMessage, auth } = useContext(AppContext);
+    const [email, setEmail] = useState('');
+    const [emailSent, setEmailSent] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const handleGuestLogin = () => {
+    // Effect to handle sign-in from email link
+    useEffect(() => {
+        if (!auth) return; // Ensure auth object is available
+
+        // Check if the current URL is a sign-in with email link
+        if (FirebaseAuth.isSignInWithEmailLink(auth, window.location.href)) { // Use FirebaseAuth.isSignInWithEmailLink
+            let userEmail = localStorage.getItem('emailForSignIn');
+            if (!userEmail) {
+                // User opened the link on a different device or browser.
+                // Prompt them to enter their email.
+                userEmail = window.prompt('Please provide your email for confirmation:');
+                if (!userEmail) {
+                    setMessage('Email not provided. Sign-in cancelled.');
+                    return;
+                }
+            }
+            setLoading(true);
+            FirebaseAuth.signInWithEmailLink(auth, userEmail, window.location.href) // Use FirebaseAuth.signInWithEmailLink
+                .then((result) => {
+                    localStorage.removeItem('emailForSignIn'); // Clean up email
+                    setUserId(result.user.uid);
+                    setMessage(`Successfully signed in as ${result.user.email}`);
+                    onLoginSuccess();
+                })
+                .catch((error) => {
+                    console.error("Error signing in with email link:", error);
+                    setMessage(`Email link sign-in failed: ${error.message}`);
+                })
+                .finally(() => {
+                    setLoading(false);
+                });
+        }
+    }, [auth, onLoginSuccess, setUserId, setMessage]); // Depend on auth, onLoginSuccess, etc.
+
+
+    const handleSendSignInLink = async () => {
+        if (!email.trim()) {
+            setMessage('Please enter your email address.');
+            return;
+        }
+
         setLoading(true);
-        // Generate a simple session ID for guest user
-        const newUserId = `guest-${crypto.randomUUID().substring(0, 8)}`;
-        setUserId(newUserId);
-        setMessage(`Welcome, ${newUserId}!`);
-        setLoading(false);
-        onLoginSuccess(); // Navigate to dashboard
+        setMessage('Sending magic link...');
+
+        // Configuration for the email link
+        const actionCodeSettings = {
+            url: window.location.href, // This URL should be your app's deployed URL (e.g., https://your-netlify-app.netlify.app/)
+                                      // Firebase Console's "Authorized domains" must include this.
+            handleCodeInApp: true, // This must be true for mobile apps, useful for web too
+        };
+
+        try {
+            await FirebaseAuth.sendSignInLinkToEmail(auth, email, actionCodeSettings); // Use FirebaseAuth.sendSignInLinkToEmail
+            localStorage.setItem('emailForSignIn', email); // Save email for later retrieval after redirect
+            setEmailSent(true);
+            setMessage(`A magic link has been sent to ${email}. Please check your inbox (and spam folder!).`);
+        } catch (error) {
+            console.error("Error sending sign-in link:", error);
+            setMessage(`Failed to send link: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -83,17 +208,34 @@ const LoginPage = ({ onLoginSuccess }) => {
                 </h1>
                 <p className="text-white text-center mb-10 text-lg opacity-90 leading-relaxed">
                     Your personal AI companion for mental wellness.
-                    Explore, reflect, and find inner peace.
+                    Sign in to continue your journey.
                 </p>
-                <button
-                    onClick={handleGuestLogin}
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-semibold py-4 px-8 rounded-xl shadow-lg hover:from-purple-800 hover:to-indigo-800 transition-all duration-400 transform hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-400 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-xl tracking-wide"
-                >
-                    {loading ? 'Entering...' : 'Enter as Guest'}
-                </button>
+
+                {!emailSent ? (
+                    <div className="flex flex-col gap-4">
+                        <input
+                            type="email"
+                            placeholder="Enter your email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full p-4 rounded-xl bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 border border-transparent focus:border-purple-500 transition-colors duration-300 text-lg"
+                            disabled={loading}
+                        />
+                        <button
+                            onClick={handleSendSignInLink}
+                            disabled={loading || !email.trim()}
+                            className="w-full bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-semibold py-4 px-8 rounded-xl shadow-lg hover:from-purple-800 hover:to-indigo-800 transition-all duration-400 transform hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-purple-400 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-xl tracking-wide"
+                        >
+                            {loading ? 'Sending...' : 'Send Magic Link'}
+                        </button>
+                    </div>
+                ) : (
+                    <p className="text-green-300 text-center text-xl mt-4 animate-fadeIn">
+                        Link sent! Check your email to sign in.
+                    </p>
+                )}
                 <p className="text-gray-300 text-sm text-center mt-8 opacity-80">
-                    Data is stored only for this session. No personal information is collected.
+                    A secure, passwordless sign-in link will be sent to your email.
                 </p>
             </div>
         </div>
@@ -102,21 +244,17 @@ const LoginPage = ({ onLoginSuccess }) => {
 
 // Dashboard Page Component
 const DashboardPage = () => {
-    const { userId, setMessage } = useContext(AppContext);
+    const { userId, setMessage, auth } = useContext(AppContext);
 
-    // Function to handle downloading the current HTML page
-    const handleDownloadApp = () => {
-        const htmlContent = document.documentElement.outerHTML;
-        const blob = new Blob([htmlContent], { type: 'text/html' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'mindwell-companion-app.html';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        setMessage('MindWell Companion app downloaded!');
+    const handleLogout = async () => {
+        try {
+            await FirebaseAuth.signOut(auth); // Use FirebaseAuth.signOut
+            setMessage('Successfully logged out.');
+            // onAuthStateChanged listener in App component will handle changing currentPage to 'login'
+        } catch (error) {
+            console.error("Error logging out:", error);
+            setMessage(`Logout failed: ${error.message}`);
+        }
     };
 
     return (
@@ -126,14 +264,15 @@ const DashboardPage = () => {
                     MindWell AI Dashboard
                 </h1>
                 {userId && <p className="text-gray-300 mt-4 text-xl opacity-90 animate-fadeInUp">Welcome, <span className="font-bold text-purple-300">{userId}</span>!</p>}
-                {/* Download App Button */}
-                <button
-                    onClick={handleDownloadApp}
-                    className="mt-8 bg-gradient-to-r from-green-500 to-teal-600 text-white font-semibold py-3 px-8 rounded-xl shadow-lg hover:from-green-600 hover:to-teal-700 transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-green-400 focus:ring-opacity-75 flex items-center justify-center mx-auto text-lg"
-                >
-                    <svg className="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L10 11.586l2.293-2.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414zM10 3a1 1 0 011 1v7a1 1 0 11-2 0V4a1 1 0 011-1z" clipRule="evenodd"></path></svg>
-                    Download App
-                </button>
+                {userId && auth && auth.currentUser && !auth.currentUser.isAnonymous && (
+                    <button
+                        onClick={handleLogout}
+                        className="mt-6 bg-red-600 text-white font-semibold py-2.5 px-6 rounded-xl shadow-lg hover:bg-red-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-75 flex items-center justify-center mx-auto text-base"
+                    >
+                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd"></path></svg>
+                        Logout
+                    </button>
+                )}
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-7xl mt-12">
@@ -537,7 +676,7 @@ const JournalEntry = () => {
             } catch (err) {
                 console.error("Error accessing microphone:", err);
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice journaling.');
+                    setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
                 } else {
                     setMessage(`Failed to access microphone: ${err.message}`);
                 }
