@@ -1,19 +1,9 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
-// Service Worker Registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-      })
-      .catch(err => {
-        console.log('ServiceWorker registration failed: ', err);
-      });
-  });
-}
 
-// Rest of your existing JavaScript code...
-
+// If you want to start measuring performance in your app, pass a function
+// to log results (for example: reportWebVitals(console.log))
+// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
+// reportWebVitals();
 // AppContext to manage global state like user ID and API keys
 const AppContext = createContext(null);
 
@@ -318,7 +308,7 @@ const Chatbot = () => {
             chatHistory.push({ role: "user", parts: [{ text: userMessage.text }] }); // Use userMessage.text as input might be cleared
 
             const payload = { contents: chatHistory };
-            const apiKey = "AIzaSyD5ixU-BJvvlEWqjPEB9L_SVUJg3u5ZbLs"; // Canvas will provide this in runtime for gemini-2.0-flash
+            const apiKey = ""; // Canvas will provide this in runtime for gemini-2.0-flash
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             const response = await fetch(apiUrl, {
@@ -612,7 +602,7 @@ const ImageGenerator = () => {
 
         try {
             const payload = { instances: [{ prompt: prompt }], parameters: { "sampleCount": 1 } };
-            const apiKey = "AIzaSyD5ixU-BJvvlEWqjPEB9L_SVUJg3u5ZbLs"; // Canvas will provide this in runtime for imagen-3.0-generate-002
+            const apiKey = ""; // Canvas will provide this in runtime for imagen-3.0-generate-002
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
 
             const response = await fetch(apiUrl, {
@@ -831,12 +821,11 @@ const MeditationSection = () => {
     const [timeRemaining, setTimeRemaining] = useState(0); // Time in seconds
     const [isRunning, setIsRunning] = useState(false);
     const timerRef = useRef(null);
-    const audioRef = useRef(new Audio()); // Audio element for TTS playback
+    // Removed audioRef for TTS, as voiceover is being removed
     const calmingSoundRef = useRef(new Audio()); // Audio element for calming sound playback
 
-    const [ttsLoading, setTtsLoading] = useState(false);
-    const [ttsLanguage, setTtsLanguage] = useState('en-ZA');
-    const [ttsGender, setTtsGender] = useState('FEMALE'); // Default to female
+    // Removed ttsLoading, ttsLanguage, ttsGender states
+    // Removed ttsLanguageOptions and getVoiceName function
 
     const [selectedCalmingSound, setSelectedCalmingSound] = useState(''); // Stores the URL of the selected calming sound
     const [calmingSoundVolume, setCalmingSoundVolume] = useState(0.5); // Default volume for calming sound
@@ -849,45 +838,6 @@ const MeditationSection = () => {
         { name: 'Ocean Waves', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' }, // Placeholder
         { name: 'Zen Chime', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' }, // Placeholder
     ];
-
-    // Guided meditation script
-    const guidedMeditationScript = `
-        Find a comfortable position, either sitting or lying down. Gently close your eyes or soften your gaze.
-
-        Bring your attention to your breath. Feel the gentle rise and fall of your abdomen, or the sensation of air entering and leaving your nostrils. There's no need to change anything, just observe.
-
-        As thoughts arise, simply acknowledge them without judgment. Imagine them as clouds passing in the sky. Let them drift by, and gently bring your attention back to your breath.
-
-        Briefly scan your body. Notice any areas of tension, and on each exhale, imagine those tensions softening and releasing.
-
-        Allow yourself to rest in this present moment. Feel a sense of calm and peace washing over you. Remind yourself that you are safe and complete, just as you are.
-
-        When you're ready, slowly deepen your breath. Wiggle your fingers and toes. Gently open your eyes, bringing this sense of peace back into your day.
-    `;
-
-    // Language options for Text-to-Speech (more specific for TTS voices)
-    const ttsLanguageOptions = [
-        { code: 'en-US', name: 'English (US)', voices: [{ type: 'FEMALE', name: 'en-US-Standard-C' }, { type: 'MALE', name: 'en-US-Standard-D' }] },
-        { code: 'en-GB', name: 'English (UK)', voices: [{ type: 'FEMALE', name: 'en-GB-Standard-A' }, { type: 'MALE', name: 'en-GB-Standard-B' }] },
-        { code: 'en-AU', name: 'English (Australia)', voices: [{ type: 'FEMALE', name: 'en-AU-Standard-A' }, { type: 'MALE', name: 'en-AU-Standard-B' }] },
-        { code: 'en-ZA', name: 'English (South Africa)', voices: [{ type: 'FEMALE', name: 'en-ZA-Standard-A' }, { type: 'MALE', name: 'en-ZA-Standard-B' }] }, // Placeholder, actual voices may vary
-        { code: 'af-ZA', name: 'Afrikaans (South Africa)', voices: [{ type: 'FEMALE', name: 'af-ZA-Standard-A' }, { type: 'MALE', name: 'af-ZA-Standard-B' }] }, // Placeholder
-        { code: 'zu-ZA', name: 'isiZulu (South Africa)', voices: [{ type: 'FEMALE', name: 'zu-ZA-Standard-A' }, { type: 'MALE', name: 'zu-ZA-Standard-B' }] }, // Placeholder
-        { code: 'xh-ZA', name: 'isiXhosa (South Africa)', voices: [{ type: 'FEMALE', name: 'xh-ZA-Standard-A' }, { type: 'MALE', name: 'xh-ZA-Standard-B' }] }, // Placeholder
-        { code: 'fr-FR', name: 'French (France)', voices: [{ type: 'FEMALE', name: 'fr-FR-Standard-A' }, { type: 'MALE', name: 'fr-FR-Standard-B' }] },
-        { code: 'es-ES', name: 'Spanish (Spain)', voices: [{ type: 'FEMALE', name: 'es-ES-Standard-A' }, { type: 'MALE', name: 'es-ES-Standard-B' }] },
-        { code: 'de-DE', name: 'German (Germany)', voices: [{ type: 'FEMALE', name: 'de-DE-Standard-A' }, { type: 'MALE', name: 'de-DE-Standard-B' }] },
-    ];
-
-    // Get the full voice name based on language code and gender
-    const getVoiceName = (langCode, gender) => {
-        const lang = ttsLanguageOptions.find(option => option.code === langCode);
-        if (lang) {
-            const voice = lang.voices.find(v => v.type === gender);
-            return voice ? voice.name : lang.voices[0].name; // Fallback to first available voice
-        }
-        return 'en-US-Standard-C'; // Default fallback
-    };
 
 
     useEffect(() => {
@@ -956,11 +906,7 @@ const MeditationSection = () => {
         clearInterval(timerRef.current);
         setTimeRemaining(meditationDuration * 60); // Reset to initial duration
         setMessage('Meditation reset.');
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-            audioRef.current.src = ''; // Clear audio source
-        }
+        // Removed audioRef related reset
         if (calmingSoundRef.current) {
             calmingSoundRef.current.pause();
             calmingSoundRef.current.currentTime = 0;
@@ -973,81 +919,7 @@ const MeditationSection = () => {
         return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const playGuidedMeditation = async () => {
-        setTtsLoading(true);
-        setMessage('Generating voiceover...');
-        // Pause calming sound if playing during guided meditation
-        if (calmingSoundRef.current) {
-            calmingSoundRef.current.pause();
-        }
-
-        try {
-            const voiceName = getVoiceName(ttsLanguage, ttsGender);
-
-            const payload = {
-                input: { text: guidedMeditationScript },
-                voice: { languageCode: ttsLanguage, name: voiceName, ssmlGender: ttsGender },
-                audioConfig: { audioEncoding: 'MP3' }
-            };
-
-            const apiKey = ""; // Canvas will provide this in runtime for text-to-speech
-            const apiUrl = `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${apiKey}`;
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`TTS API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
-            }
-
-            const result = await response.json();
-            if (result.audioContent) {
-                const audioBlob = new Blob([Uint8Array.from(atob(result.audioContent), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-
-                audioRef.current.src = audioUrl;
-                audioRef.current.play();
-                setMessage('Guided meditation playing...');
-
-                // Revoke object URL after audio ends to free up memory
-                audioRef.current.onended = () => {
-                    URL.revokeObjectURL(audioUrl);
-                    setMessage('Guided meditation finished.');
-                    // Resume calming sound if timer is still running
-                    if (isRunning && selectedCalmingSound) {
-                        calmingSoundRef.current.play();
-                    }
-                };
-            } else {
-                setMessage("Failed to generate audio content.");
-            }
-        } catch (error) {
-            console.error("Error generating or playing TTS:", error);
-            setMessage(`Failed to play guided meditation: ${error.message}`);
-            // Ensure calming sound resumes if an error occurs and timer is running
-            if (isRunning && selectedCalmingSound) {
-                calmingSoundRef.current.play();
-            }
-        } finally {
-            setTtsLoading(false);
-        }
-    };
-
-    const stopGuidedMeditation = () => {
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-            setMessage('Guided meditation stopped.');
-            // Resume calming sound if timer is still running
-            if (isRunning && selectedCalmingSound) {
-                calmingSoundRef.current.play();
-            }
-        }
-    };
+    // Removed playGuidedMeditation and stopGuidedMeditation functions
 
 
     return (
@@ -1063,7 +935,7 @@ const MeditationSection = () => {
             </div>
 
             <div className="w-full mb-6 p-5 bg-gray-800 rounded-2xl shadow-md flex flex-col border border-gray-700">
-                <h3 className="text-2xl font-bold text-center mb-4 drop-shadow-md">Guided Meditation</h3>
+                <h3 className="text-2xl font-bold text-center mb-4 drop-shadow-md">Guided Meditation (Text Only)</h3>
                 <p className="text-gray-200 italic mb-5 text-center text-sm opacity-90">
                     Find a comfortable position, either sitting or lying down. Gently close your eyes or soften your gaze.
                 </p>
@@ -1075,55 +947,7 @@ const MeditationSection = () => {
                     <li>**Gentle Return:** When you're ready, slowly deepen your breath. Wiggle your fingers and toes. Gently open your eyes, bringing this sense of peace back into your day.</li>
                 </ol>
 
-                <div className="flex flex-col gap-4 w-full">
-                    <label htmlFor="tts-language" className="text-gray-300 text-base font-medium">Voice Language:</label>
-                    <select
-                        id="tts-language"
-                        value={ttsLanguage}
-                        onChange={(e) => setTtsLanguage(e.target.value)}
-                        className="w-full p-2.5 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300 text-base"
-                    >
-                        {ttsLanguageOptions.map((lang) => (
-                            <option key={lang.code} value={lang.code}>
-                                {lang.name}
-                            </option>
-                        ))}
-                    </select>
-
-                    <label htmlFor="tts-gender" className="text-gray-300 text-base font-medium">Voice Gender:</label>
-                    <select
-                        id="tts-gender"
-                        value={ttsGender}
-                        onChange={(e) => setTtsGender(e.target.value)}
-                        className="w-full p-2.5 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-all duration-300 text-base"
-                    >
-                        {/* Dynamically show genders based on selected language's available voices */}
-                        {ttsLanguageOptions.find(lang => lang.code === ttsLanguage)?.voices.map(voice => (
-                            <option key={voice.type} value={voice.type}>
-                                {voice.type === 'FEMALE' ? 'Female' : 'Male'}
-                            </option>
-                        )) || <option value="FEMALE">Female</option>} {/* Fallback if no voices found */}
-                    </select>
-
-                    <div className="flex justify-center gap-4 mt-5">
-                        <button
-                            onClick={playGuidedMeditation}
-                            disabled={ttsLoading}
-                            className="bg-purple-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-purple-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-purple-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-base"
-                        >
-                            {ttsLoading ? 'Generating...' : 'Play Voiceover'}
-                        </button>
-                        <button
-                            onClick={stopGuidedMeditation}
-                            disabled={!audioRef.current.src || ttsLoading}
-                            className="bg-gray-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-gray-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-gray-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed text-base"
-                        >
-                            Stop Voiceover
-                        </button>
-                    </div>
-                    {/* Hidden audio element for playback */}
-                    <audio ref={audioRef} className="hidden"></audio>
-                </div>
+                {/* Removed TTS language/gender selectors and play/stop buttons */}
             </div>
 
             <div className="w-full p-5 bg-gray-800 rounded-2xl shadow-md flex flex-col items-center border border-gray-700">
@@ -1196,7 +1020,7 @@ const MeditationSection = () => {
                         Reset
                     </button>
                 </div>
-                {/* Hidden audio element for calming sound playback */}
+                {/* Removed audioRef for TTS playback */}
                 <audio ref={calmingSoundRef} className="hidden"></audio>
             </div>
         </div>
