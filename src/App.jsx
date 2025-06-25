@@ -1,4 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import * as Tone from 'tone'; // Import Tone.js library
 
 // AppContext to manage global state like user ID and messages
 const AppContext = createContext(null);
@@ -164,7 +165,6 @@ const Card = ({ title, description, children, large }) => {
         </div>
     );
 };
-
 
 // Language options for Speech Recognition
 const languageOptions = [
@@ -469,7 +469,7 @@ const JournalEntry = () => {
         recognition.onerror = (event) => {
             console.error("Speech recognition error in journal:", event.error);
             if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-                setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice journaling.');
+                setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
             } else {
                 setMessage(`Speech recognition error: ${event.error}`);
             }
@@ -582,12 +582,12 @@ const JournalEntry = () => {
                     {isRecording ? (
                         <div className="flex items-center justify-center">
                             <svg className="w-5 h-5 mr-2 animate-pulse" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7.001 7.001 0 006 6.93V17h-2a1 1 0 100 2h4a1 1 0 100-2h-2v-2.07z" clipRule="evenodd"></path></svg>
-                            Stop Recording
+                            <span>Stop Recording</span> {/* Fixed: Wrapped text in span */}
                         </div>
                     ) : (
                         <div className="flex items-center justify-center">
                             <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
-                            Start Recording
+                            <span>Start Recording</span>
                         </div>
                     )}
                 </button>
@@ -811,70 +811,77 @@ const MeditationSection = () => {
     const [timeRemaining, setTimeRemaining] = useState(0); // Time in seconds
     const [isRunning, setIsRunning] = useState(false);
     const timerRef = useRef(null);
-    const audioRef = useRef(new Audio()); // Audio element for TTS playback
 
-    const [ttsLoading, setTtsLoading] = useState(false);
-    const [ttsLanguage, setTtsLanguage] = useState('en-ZA');
-    const [ttsGender, setTtsGender] = useState('FEMALE'); // Default to female
+    // Tone.js synth for calming drone sound
+    const droneSynthRef = useRef(null);
+    const reverbRef = useRef(null);
+    const [isDronePlaying, setIsDronePlaying] = useState(false);
 
-    // Guided meditation script
-    const guidedMeditationScript = `
-        Find a comfortable position, either sitting or lying down. Gently close your eyes or soften your gaze.
+    // Initialize Tone.js synth and effects
+    useEffect(() => {
+        // Initialize synth only once
+        if (!droneSynthRef.current) {
+            droneSynthRef.current = new Tone.Synth({
+                oscillator: {
+                    type: "sine" // A smooth sine wave for calming effect
+                },
+                envelope: {
+                    attack: 2,    // Slow attack to fade in
+                    decay: 0.1,
+                    sustain: 1,   // Sustain indefinitely
+                    release: 3    // Slow release to fade out
+                },
+                volume: -20 // Start soft
+            });
 
-        Bring your attention to your breath. Feel the gentle rise and fall of your abdomen, or the sensation of air entering and leaving your nostrils. There's no need to change anything, just observe.
+            // Add a subtle reverb for ambiance
+            reverbRef.current = new Tone.Reverb({
+                decay: 10,      // Longer decay for more ambiance
+                preDelay: 0.5,  // Little pre-delay
+                wet: 0.5        // Mix of wet/dry
+            }).toDestination();
 
-        As thoughts arise, simply acknowledge them without judgment. Imagine them as clouds passing in the sky. Let them drift by, and gently bring your attention back to your breath.
-
-        Briefly scan your body. Notice any areas of tension, and on each exhale, imagine those tensions softening and releasing.
-
-        Allow yourself to rest in this present moment. Feel a sense of calm and peace washing over you. Remind yourself that you are safe and complete, just as you are.
-
-        When you're ready, slowly deepen your breath. Wiggle your fingers and toes. Gently open your eyes, bringing this sense of peace back into your day.
-    `;
-
-    // Language options for Text-to-Speech (more specific for TTS voices)
-    const ttsLanguageOptions = [
-        { code: 'en-US', name: 'English (US)', voices: [{ type: 'FEMALE', name: 'en-US-Standard-C' }, { type: 'MALE', name: 'en-US-Standard-D' }] },
-        { code: 'en-GB', name: 'English (UK)', voices: [{ type: 'FEMALE', name: 'en-GB-Standard-A' }, { type: 'MALE', name: 'en-GB-Standard-B' }] },
-        { code: 'en-AU', name: 'English (Australia)', voices: [{ type: 'FEMALE', name: 'en-AU-Standard-A' }, { type: 'MALE', name: 'en-AU-Standard-B' }] },
-        { code: 'en-ZA', name: 'English (South Africa)', voices: [{ type: 'FEMALE', name: 'en-ZA-Standard-A' }, { type: 'MALE', name: 'en-ZA-Standard-B' }] }, // Placeholder, actual voices may vary
-        { code: 'af-ZA', name: 'Afrikaans (South Africa)', voices: [{ type: 'FEMALE', name: 'af-ZA-Standard-A' }, { type: 'MALE', name: 'af-ZA-Standard-B' }] }, // Placeholder
-        { code: 'zu-ZA', name: 'isiZulu (South Africa)', voices: [{ type: 'FEMALE', name: 'zu-ZA-Standard-A' }, { type: 'MALE', name: 'zu-ZA-Standard-B' }] }, // Placeholder
-        { code: 'xh-ZA', name: 'isiXhosa (South Africa)', voices: [{ type: 'FEMALE', name: 'xh-ZA-Standard-A' }, { type: 'MALE', name: 'xh-ZA-Standard-B' }] }, // Placeholder
-        { code: 'fr-FR', name: 'French (France)', voices: [{ type: 'FEMALE', name: 'fr-FR-Standard-A' }, { type: 'MALE', name: 'fr-FR-Standard-B' }] },
-        { code: 'es-ES', name: 'Spanish (Spain)', voices: [{ type: 'FEMALE', name: 'es-ES-Standard-A' }, { type: 'MALE', name: 'es-ES-Standard-B' }] },
-        { code: 'de-DE', name: 'German (Germany)', voices: [{ type: 'FEMALE', name: 'de-DE-Standard-A' }, { type: 'MALE', name: 'de-DE-Standard-B' }] },
-    ];
-
-    // Get the full voice name based on language code and gender
-    const getVoiceName = (langCode, gender) => {
-        const lang = ttsLanguageOptions.find(option => option.code === langCode);
-        if (lang) {
-            const voice = lang.voices.find(v => v.type === gender);
-            return voice ? voice.name : lang.voices[0].name; // Fallback to first available voice
+            // Connect synth to reverb, then reverb to master output
+            droneSynthRef.current.connect(reverbRef.current);
         }
-        return 'en-US-Standard-C'; // Default fallback
-    };
 
+        // Cleanup: dispose of Tone.js resources when component unmounts
+        return () => {
+            if (droneSynthRef.current) {
+                droneSynthRef.current.dispose();
+                droneSynthRef.current = null;
+            }
+            if (reverbRef.current) {
+                reverbRef.current.dispose();
+                reverbRef.current = null;
+            }
+            setIsDronePlaying(false);
+            clearInterval(timerRef.current); // Ensure timer is also cleared
+        };
+    }, []);
 
+    // Timer logic
     useEffect(() => {
         if (isRunning && timeRemaining > 0) {
             timerRef.current = setInterval(() => {
                 setTimeRemaining((prevTime) => prevTime - 1);
             }, 1000);
         } else if (timeRemaining === 0 && isRunning) {
+            // Timer finished
             setIsRunning(false);
             clearInterval(timerRef.current);
+            stopDroneSound(); // Stop calming sound when timer finishes
             setMessage('Meditation session complete! Good job.');
         }
 
         return () => clearInterval(timerRef.current);
-    }, [isRunning, timeRemaining]);
+    }, [isRunning, timeRemaining]); // Re-run when isRunning or timeRemaining changes
 
     const startMeditationTimer = () => {
         if (meditationDuration > 0) {
             setTimeRemaining(meditationDuration * 60);
             setIsRunning(true);
+            startDroneSound(); // Start calming sound with timer
             setMessage(`Starting ${meditationDuration}-minute meditation...`);
         } else {
             setMessage('Please set a duration greater than 0.');
@@ -884,6 +891,7 @@ const MeditationSection = () => {
     const pauseMeditationTimer = () => {
         setIsRunning(false);
         clearInterval(timerRef.current);
+        stopDroneSound(); // Pause/stop calming sound with timer
         setMessage('Meditation paused.');
     };
 
@@ -891,12 +899,8 @@ const MeditationSection = () => {
         setIsRunning(false);
         clearInterval(timerRef.current);
         setTimeRemaining(meditationDuration * 60); // Reset to initial duration
+        stopDroneSound(); // Stop calming sound on reset
         setMessage('Meditation reset.');
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-            audioRef.current.src = ''; // Clear audio source
-        }
     };
 
     const formatTime = (seconds) => {
@@ -905,62 +909,21 @@ const MeditationSection = () => {
         return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    const playGuidedMeditation = async () => {
-        setTtsLoading(true);
-        setMessage('Generating voiceover...');
-        try {
-            const voiceName = getVoiceName(ttsLanguage, ttsGender);
-
-            const payload = {
-                input: { text: guidedMeditationScript },
-                voice: { languageCode: ttsLanguage, name: voiceName, ssmlGender: ttsGender },
-                audioConfig: { audioEncoding: 'MP3' }
-            };
-
-            const apiKey = "AIzaSyCFlhCcqLMBxK5ckKcO30WjftmT1w_uj8Q"; // Canvas will provide this in runtime for text-to-speech
-            const apiUrl = `https://texttospeech.googleapis.com/v1beta1/text:synthesize?key=${apiKey}`;
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`TTS API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
-            }
-
-            const result = await response.json();
-            if (result.audioContent) {
-                const audioBlob = new Blob([Uint8Array.from(atob(result.audioContent), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-
-                audioRef.current.src = audioUrl;
-                audioRef.current.play();
-                setMessage('Guided meditation playing...');
-
-                // Revoke object URL after audio ends to free up memory
-                audioRef.current.onended = () => {
-                    URL.revokeObjectURL(audioUrl);
-                    setMessage('Guided meditation finished.');
-                };
-            } else {
-                setMessage("Failed to generate audio content.");
-            }
-        } catch (error) {
-            console.error("Error generating or playing TTS:", error);
-            setMessage(`Failed to play guided meditation: ${error.message}`);
-        } finally {
-            setTtsLoading(false);
+    // Tone.js sound controls
+    const startDroneSound = async () => {
+        if (droneSynthRef.current && !isDronePlaying) {
+            await Tone.start(); // Ensure audio context is started on user interaction
+            droneSynthRef.current.triggerAttack("C3"); // Start a low C note
+            setIsDronePlaying(true);
+            setMessage('Calming sound started...');
         }
     };
 
-    const stopGuidedMeditation = () => {
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-            setMessage('Guided meditation stopped.');
+    const stopDroneSound = () => {
+        if (droneSynthRef.current && isDronePlaying) {
+            droneSynthRef.current.triggerRelease(); // Release the note
+            setIsDronePlaying(false);
+            setMessage('Calming sound stopped.');
         }
     };
 
@@ -978,9 +941,9 @@ const MeditationSection = () => {
             </div>
 
             <div className="w-full mb-6 p-4 bg-gray-700 rounded-lg shadow-md flex flex-col">
-                <h3 className="text-2xl font-bold text-center mb-3">Guided Meditation</h3>
+                <h3 className="text-2xl font-bold text-center mb-3">Guided Meditation Principles</h3>
                 <p className="text-gray-200 italic mb-4 text-center">
-                    Find a comfortable position, either sitting or lying down. Gently close your eyes or soften your gaze.
+                    Here are the core principles to guide your silent meditation practice:
                 </p>
                 <ol className="list-decimal list-inside space-y-3 text-gray-300 mb-4">
                     <li>**Notice Your Breath:** Bring your attention to your breath. Feel the gentle rise and fall of your abdomen, or the sensation of air entering and leaving your nostrils. There's no need to change anything, just observe.</li>
@@ -989,60 +952,13 @@ const MeditationSection = () => {
                     <li>**Cultivate Peace:** Allow yourself to rest in this present moment. Feel a sense of calm and peace washing over you. Remind yourself that you are safe and complete, just as you are.</li>
                     <li>**Gentle Return:** When you're ready, slowly deepen your breath. Wiggle your fingers and toes. Gently open your eyes, bringing this sense of peace back into your day.</li>
                 </ol>
-
-                <div className="flex flex-col gap-3 w-full">
-                    <label htmlFor="tts-language" className="text-gray-300">Voice Language:</label>
-                    <select
-                        id="tts-language"
-                        value={ttsLanguage}
-                        onChange={(e) => setTtsLanguage(e.target.value)}
-                        className="w-full p-2 rounded-lg bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    >
-                        {ttsLanguageOptions.map((lang) => (
-                            <option key={lang.code} value={lang.code}>
-                                {lang.name}
-                            </option>
-                        ))}
-                    </select>
-
-                    <label htmlFor="tts-gender" className="text-gray-300">Voice Gender:</label>
-                    <select
-                        id="tts-gender"
-                        value={ttsGender}
-                        onChange={(e) => setTtsGender(e.target.value)}
-                        className="w-full p-2 rounded-lg bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    >
-                        {/* Dynamically show genders based on selected language's available voices */}
-                        {ttsLanguageOptions.find(lang => lang.code === ttsLanguage)?.voices.map(voice => (
-                            <option key={voice.type} value={voice.type}>
-                                {voice.type === 'FEMALE' ? 'Female' : 'Male'}
-                            </option>
-                        )) || <option value="FEMALE">Female</option>} {/* Fallback if no voices found */}
-                    </select>
-
-                    <div className="flex justify-center gap-4 mt-4">
-                        <button
-                            onClick={playGuidedMeditation}
-                            disabled={ttsLoading}
-                            className="bg-purple-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-purple-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {ttsLoading ? 'Generating...' : 'Play Voiceover'}
-                        </button>
-                        <button
-                            onClick={stopGuidedMeditation}
-                            disabled={!audioRef.current.src || ttsLoading}
-                            className="bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            Stop Voiceover
-                        </button>
-                    </div>
-                    {/* Hidden audio element for playback */}
-                    <audio ref={audioRef} className="hidden"></audio>
-                </div>
+                <p className="text-gray-300 text-sm italic text-center">
+                    Use these principles to guide your mind while the meditation timer runs.
+                </p>
             </div>
 
             <div className="w-full p-4 bg-gray-700 rounded-lg shadow-md flex flex-col items-center">
-                <h3 className="text-2xl font-bold mb-3">Meditation Timer</h3>
+                <h3 className="text-2xl font-bold mb-3">Meditation Timer & Calming Sound</h3>
                 <div className="flex items-center space-x-2 mb-4">
                     <label htmlFor="meditation-duration" className="text-gray-300 text-lg">Duration (minutes):</label>
                     <input
@@ -1065,14 +981,14 @@ const MeditationSection = () => {
                             className="bg-green-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 disabled:opacity-50 disabled:cursor-not-allowed"
                             disabled={meditationDuration <= 0}
                         >
-                            Start
+                            Start Meditation
                         </button>
                     ) : (
                         <button
                             onClick={pauseMeditationTimer}
                             className="bg-orange-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-orange-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-75"
                         >
-                            Pause
+                            Pause Meditation
                         </button>
                     )}
                     <button
@@ -1082,6 +998,24 @@ const MeditationSection = () => {
                     >
                         Reset
                     </button>
+                </div>
+                {/* Calming Sound Controls (independent play/stop) */}
+                <div className="flex space-x-4 mt-6">
+                    {!isDronePlaying ? (
+                        <button
+                            onClick={startDroneSound}
+                            className="bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-teal-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Play Calming Sound
+                        </button>
+                    ) : (
+                        <button
+                            onClick={stopDroneSound}
+                            className="bg-cyan-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-cyan-700 transition-colors duration-300"
+                        >
+                            Stop Calming Sound
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
