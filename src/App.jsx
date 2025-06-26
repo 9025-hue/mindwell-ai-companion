@@ -931,7 +931,14 @@ const MeditationSection = () => {
                 wet: 0.5
             }).toDestination(); // Connect reverb directly to main output
         }
+// In your MeditationSection component
+const startAudio = async () => {
+  await Tone.start(); // Required for browser audio
+  console.log('Audio is ready');
+  // Rest of your audio initialization
+}
 
+// Call this from a button click handler
         // Cleanup for reverb on component unmount
         return () => {
             if (reverbRef.current) {
@@ -1096,7 +1103,15 @@ const MeditationSection = () => {
         const secs = seconds % 60;
         return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
-
+const startMeditation = async () => {
+  try {
+    await Tone.start(); // Must be called first
+    startCalmingSound();
+    setIsRunning(true);
+  } catch (error) {
+    console.error("Audio failed:", error);
+  }
+}
 
     return (
         <div className="w-full text-white bg-gray-800 rounded-lg shadow-inner p-4 flex flex-col items-center">

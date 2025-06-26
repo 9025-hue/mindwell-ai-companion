@@ -114,3 +114,14 @@ export default function VoiceJournal() {
     </div>
   );
 }
+const handleRecord = async () => {
+  try {
+    if (!navigator.mediaDevices) {
+      throw new Error("Media devices not available");
+    }
+    // ... rest of your recording logic
+  } catch (error) {
+    console.error("Recording failed:", error);
+    setMessage(error.message);
+  }
+}
