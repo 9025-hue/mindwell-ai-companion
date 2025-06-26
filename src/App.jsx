@@ -199,6 +199,8 @@ const Chatbot = () => {
     const recognitionRef = useRef(null); // Ref to hold the SpeechRecognition object
     const mediaStreamRef = useRef(null); // Ref to hold the media stream to stop it later
     const [selectedLanguage, setSelectedLanguage] = useState('en-ZA'); // Default to English (South Africa)
+    const [microphoneStatus, setMicrophoneStatus] = useState('idle'); // 'idle', 'requesting', 'granted', 'denied', 'unsupported'
+
 
     // Scroll to bottom whenever messages update
     useEffect(() => {
@@ -208,8 +210,8 @@ const Chatbot = () => {
     // Speech Recognition setup for Chat
     useEffect(() => {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            // setMessage('Speech Recognition API not supported by this browser for chat voice input.');
-            return; // Don't set message repeatedly, only once for journal
+            setMicrophoneStatus('unsupported');
+            return;
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -223,6 +225,7 @@ const Chatbot = () => {
             setIsRecording(true);
             setCurrentTranscript('');
             setMessage('Chat recording started...');
+            setMicrophoneStatus('granted'); // Confirm microphone is active
         };
 
         recognition.onresult = (event) => {
@@ -242,8 +245,13 @@ const Chatbot = () => {
 
         recognition.onerror = (event) => {
             console.error("Speech recognition error in chat:", event.error);
+            setMicrophoneStatus('denied'); // Set status to denied on error
             if (event.error === 'not-allowed' || event.error === 'permission-denied') {
                 setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
+            } else if (event.error === 'no-speech') {
+                setMessage('No speech detected. Please try again.');
+            } else if (event.error === 'audio-capture') {
+                setMessage('Could not find or access microphone.');
             } else {
                 setMessage(`Chat voice input error: ${event.error}`);
             }
@@ -261,6 +269,9 @@ const Chatbot = () => {
                 mediaStreamRef.current = null;
             }
             setMessage('Chat recording ended.');
+            if (microphoneStatus !== 'denied') { // Don't reset if already denied
+                setMicrophoneStatus('idle');
+            }
         };
 
         recognitionRef.current = recognition;
@@ -274,7 +285,7 @@ const Chatbot = () => {
                 mediaStreamRef.current = null;
             }
         };
-    }, [selectedLanguage]); // Re-run effect if language changes
+    }, [selectedLanguage, isRecording]); // Re-run effect if language or isRecording changes to ensure cleanup
 
     const toggleVoiceInput = async () => {
         if (isRecording) {
@@ -282,6 +293,7 @@ const Chatbot = () => {
         } else {
             setCurrentTranscript('');
             setInput('');
+            setMicrophoneStatus('requesting'); // Indicate microphone request
             setMessage('Requesting microphone access for chat...');
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -290,6 +302,7 @@ const Chatbot = () => {
                 recognitionRef.current.start();
             } catch (err) {
                 console.error("Error accessing microphone for chat:", err);
+                setMicrophoneStatus('denied'); // Set status to denied on error
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice input for chat.');
                 } else {
@@ -378,6 +391,22 @@ const Chatbot = () => {
                 <div ref={messagesEndRef} /> {/* Element to scroll into view */}
             </div>
             <div className="p-4 border-t border-gray-700 flex flex-col gap-2">
+                {microphoneStatus === 'denied' && (
+                    <p className="text-red-400 text-center text-sm mb-2">
+                        Microphone access is denied. Please enable it in your browser settings to use voice input.
+                        (e.g., Chrome: Settings {'>'} Privacy and security {'>'} Site Settings {'>'} Microphone)
+                    </p>
+                )}
+                {microphoneStatus === 'requesting' && (
+                    <p className="text-blue-400 text-center text-sm animate-pulse mb-2">
+                        Waiting for microphone permission... (Check your browser's prompt)
+                    </p>
+                )}
+                {microphoneStatus === 'unsupported' && (
+                    <p className="text-orange-400 text-center text-sm mb-2">
+                        Speech Recognition API is not supported by this browser.
+                    </p>
+                )}
                 <select
                     value={selectedLanguage}
                     onChange={(e) => setSelectedLanguage(e.target.value)}
@@ -397,11 +426,11 @@ const Chatbot = () => {
                         onKeyPress={(e) => e.key === 'Enter' && !loading && sendMessage()}
                         placeholder="Type your message or speak..."
                         className="flex-1 p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-transparent focus:border-blue-500 transition-colors"
-                        disabled={loading}
+                        disabled={loading || microphoneStatus === 'unsupported'}
                     />
                     <button
                         onClick={toggleVoiceInput}
-                        disabled={loading}
+                        disabled={loading || microphoneStatus === 'unsupported'}
                         className={`p-3 rounded-lg shadow-lg transition-colors duration-300 ${
                             isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-purple-600 hover:bg-purple-700'
                         } text-white focus:outline-none focus:ring-2 focus:ring-opacity-75 ${
@@ -409,9 +438,15 @@ const Chatbot = () => {
                         }`}
                     >
                         {isRecording ? (
-                            <svg className="w-5 h-5 mr-2 animate-pulse" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7.001 7.001 0 006 6.93V17h-2a1 1 0 100 2h4a1 1 0 100-2h-2v-2.07z" clipRule="evenodd"></path></svg>
+                            <div className="flex items-center justify-center">
+                                <svg className="w-5 h-5 mr-2 animate-pulse" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7.001 7.001 0 006 6.93V17h-2a1 1 0 100 2h4a1 1 0 100-2h-2v-2.07z" clipRule="evenodd"></path></svg>
+                                <span>Stop Recording</span>
+                            </div>
                         ) : (
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
+                            <div className="flex items-center justify-center">
+                                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
+                                <span>Start Recording</span>
+                            </div>
                         )}
                     </button>
                     <button
@@ -436,12 +471,13 @@ const JournalEntry = () => {
     const recognitionRef = useRef(null); // Ref to hold the SpeechRecognition object
     const mediaStreamRef = useRef(null); // Ref to hold the media stream to stop it later
     const [selectedLanguage, setSelectedLanguage] = useState('en-ZA'); // Default to English (South Africa)
+    const [microphoneStatus, setMicrophoneStatus] = useState('idle'); // 'idle', 'requesting', 'granted', 'denied', 'unsupported'
 
 
     useEffect(() => {
         // Initialize SpeechRecognition on component mount
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            setMessage('Speech Recognition API not supported by this browser.');
+            setMicrophoneStatus('unsupported');
             return;
         }
 
@@ -456,6 +492,7 @@ const JournalEntry = () => {
             setIsRecording(true);
             setTranscript(''); // Clear previous transcript
             setMessage('Recording started...');
+            setMicrophoneStatus('granted'); // Confirm microphone is active
         };
 
         recognition.onresult = (event) => {
@@ -468,9 +505,15 @@ const JournalEntry = () => {
 
         recognition.onerror = (event) => {
             console.error("Speech recognition error in journal:", event.error);
+            setMicrophoneStatus('denied'); // Set status to denied on error
             if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-                setMessage('Microphone access denied. Please enable microphone permissions in your browser settings.');
-            } else {
+                setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice journaling.');
+            } else if (event.error === 'no-speech') {
+                setMessage('No speech detected. Please try again.');
+            } else if (event.error === 'audio-capture') {
+                setMessage('Could not find or access microphone.');
+            }
+            else {
                 setMessage(`Speech recognition error: ${event.error}`);
             }
             setIsRecording(false);
@@ -496,6 +539,9 @@ const JournalEntry = () => {
             } else if (recognitionRef.current && recognitionRef.current.readyState !== 'listening') { // Only show 'No speech detected' if recording actually stopped
                 setMessage('No speech detected.');
             }
+            if (microphoneStatus !== 'denied') { // Don't reset if already denied
+                setMicrophoneStatus('idle');
+            }
         };
 
         recognitionRef.current = recognition;
@@ -510,13 +556,14 @@ const JournalEntry = () => {
                 mediaStreamRef.current = null;
             }
         };
-    }, [selectedLanguage]); // Re-run effect if language changes
+    }, [selectedLanguage, isRecording]); // Re-run effect if language or isRecording changes to ensure cleanup
 
     const toggleRecording = async () => {
         if (isRecording) {
             recognitionRef.current.stop();
         } else {
             setTranscript(''); // Clear transcript before starting new recording
+            setMicrophoneStatus('requesting'); // Indicate microphone request
             setMessage('Requesting microphone access...'); // Set message when attempting to start
 
             try {
@@ -527,6 +574,7 @@ const JournalEntry = () => {
                 recognitionRef.current.start();
             } catch (err) {
                 console.error("Error accessing microphone:", err);
+                setMicrophoneStatus('denied'); // Set status to denied on error
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     setMessage('Microphone access denied. Please enable microphone permissions in your browser settings to use voice journaling.');
                 } else {
@@ -554,10 +602,27 @@ const JournalEntry = () => {
                 )}
             </div>
             <div className="flex flex-col items-center mt-auto gap-3">
+                {microphoneStatus === 'denied' && (
+                    <p className="text-red-400 text-center text-sm mb-2">
+                        Microphone access is denied. Please enable it in your browser settings to use voice journaling.
+                        (e.g., Chrome: Settings {'>'} Privacy and security {'>'} Site Settings {'>'} Microphone)
+                    </p>
+                )}
+                {microphoneStatus === 'requesting' && (
+                    <p className="text-blue-400 text-center text-sm animate-pulse mb-2">
+                        Waiting for microphone permission... (Check your browser's prompt)
+                    </p>
+                )}
+                {microphoneStatus === 'unsupported' && (
+                    <p className="text-orange-400 text-center text-sm mb-2">
+                        Speech Recognition API is not supported by this browser.
+                    </p>
+                )}
                 <select
                     value={selectedLanguage}
                     onChange={(e) => setSelectedLanguage(e.target.value)}
                     className="w-full p-2 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={microphoneStatus === 'unsupported'}
                 >
                     {languageOptions.map((lang) => (
                         <option key={lang.code} value={lang.code}>
@@ -578,11 +643,12 @@ const JournalEntry = () => {
                     } text-white font-semibold focus:outline-none focus:ring-2 focus:ring-opacity-75 ${
                         isRecording ? 'focus:ring-red-500' : 'focus:ring-green-500'
                     }`}
+                    disabled={microphoneStatus === 'unsupported'}
                 >
                     {isRecording ? (
                         <div className="flex items-center justify-center">
                             <svg className="w-5 h-5 mr-2 animate-pulse" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7.001 7.001 0 006 6.93V17h-2a1 1 0 100 2h4a1 1 0 100-2h-2v-2.07z" clipRule="evenodd"></path></svg>
-                            <span>Stop Recording</span> {/* Fixed: Wrapped text in span */}
+                            <span>Stop Recording</span>
                         </div>
                     ) : (
                         <div className="flex items-center justify-center">
@@ -812,53 +878,100 @@ const MeditationSection = () => {
     const [isRunning, setIsRunning] = useState(false);
     const timerRef = useRef(null);
 
-    // Tone.js synth for calming drone sound
-    const droneSynthRef = useRef(null);
-    const reverbRef = useRef(null);
-    const [isDronePlaying, setIsDronePlaying] = useState(false);
+    // Tone.js refs for sound management
+    const [selectedSoundType, setSelectedSoundType] = useState('drone'); // 'drone', 'rain'
+    const [isSoundPlaying, setIsSoundPlaying] = useState(false);
 
-    // Initialize Tone.js synth and effects
+    const currentSynthRef = useRef(null); // Will hold the active synth instance
+    const noiseFilterRef = useRef(null);       // For noise filtering (can be null for drone)
+    const reverbRef = useRef(null);       // Shared reverb instance
+
+    // 1. Initialize Reverb once (global audio effect)
     useEffect(() => {
-        // Initialize synth only once
-        if (!droneSynthRef.current) {
-            droneSynthRef.current = new Tone.Synth({
-                oscillator: {
-                    type: "sine" // A smooth sine wave for calming effect
-                },
-                envelope: {
-                    attack: 2,    // Slow attack to fade in
-                    decay: 0.1,
-                    sustain: 1,   // Sustain indefinitely
-                    release: 3    // Slow release to fade out
-                },
-                volume: -20 // Start soft
-            });
-
-            // Add a subtle reverb for ambiance
+        if (!reverbRef.current) {
             reverbRef.current = new Tone.Reverb({
-                decay: 10,      // Longer decay for more ambiance
-                preDelay: 0.5,  // Little pre-delay
-                wet: 0.5        // Mix of wet/dry
-            }).toDestination();
-
-            // Connect synth to reverb, then reverb to master output
-            droneSynthRef.current.connect(reverbRef.current);
+                decay: 10,
+                preDelay: 0.5,
+                wet: 0.5
+            }).toDestination(); // Connect reverb directly to main output
         }
 
-        // Cleanup: dispose of Tone.js resources when component unmounts
+        // Cleanup for reverb on component unmount
         return () => {
-            if (droneSynthRef.current) {
-                droneSynthRef.current.dispose();
-                droneSynthRef.current = null;
-            }
             if (reverbRef.current) {
                 reverbRef.current.dispose();
                 reverbRef.current = null;
             }
-            setIsDronePlaying(false);
-            clearInterval(timerRef.current); // Ensure timer is also cleared
         };
-    }, []);
+    }, []); // Runs once on mount
+
+    // 2. Manage the active sound generator (synth) based on selectedSoundType
+    useEffect(() => {
+        // Cleanup previous synth and filter if they exist
+        if (currentSynthRef.current) {
+            // Stop sound if it was playing before disposing
+            if (isSoundPlaying) {
+                if (selectedSoundType === 'drone') {
+                    currentSynthRef.current.triggerRelease();
+                } else if (selectedSoundType === 'rain') {
+                    currentSynthRef.current.stop();
+                }
+            }
+            currentSynthRef.current.dispose();
+            currentSynthRef.current = null;
+        }
+        if (noiseFilterRef.current) {
+            noiseFilterRef.current.dispose();
+            noiseFilterRef.current = null;
+        }
+
+        let newSynth = null;
+        let newFilter = null;
+
+        switch (selectedSoundType) {
+            case 'drone':
+                newSynth = new Tone.Synth({
+                    oscillator: { type: "sine" },
+                    envelope: { attack: 2, decay: 0.1, sustain: 1, release: 3 },
+                    volume: -20
+                });
+                newSynth.connect(reverbRef.current);
+                break;
+            case 'rain':
+                newSynth = new Tone.Noise("white");
+                newFilter = new Tone.Filter(1000, "lowpass");
+                newSynth.chain(newFilter, reverbRef.current);
+                newSynth.volume.value = -30;
+                break;
+            default:
+                break;
+        }
+
+        currentSynthRef.current = newSynth;
+        noiseFilterRef.current = newFilter; // Store filter for potential disposal
+
+        // If a sound was playing when the type was changed, restart the new sound
+        if (isSoundPlaying && currentSynthRef.current) {
+             // Tone.start() should be called by user gesture, assuming it's running if isSoundPlaying is true
+            if (selectedSoundType === 'drone') {
+                currentSynthRef.current.triggerAttack("C3");
+            } else if (selectedSoundType === 'rain') {
+                currentSynthRef.current.start();
+            }
+        }
+
+        // Cleanup for this specific synth/filter on unmount or type change
+        return () => {
+            if (currentSynthRef.current) {
+                currentSynthRef.current.dispose();
+                currentSynthRef.current = null;
+            }
+            if (noiseFilterRef.current) {
+                noiseFilterRef.current.dispose();
+                noiseFilterRef.current = null;
+            }
+        };
+    }, [selectedSoundType]); // Only re-run when sound type changes
 
     // Timer logic
     useEffect(() => {
@@ -870,18 +983,57 @@ const MeditationSection = () => {
             // Timer finished
             setIsRunning(false);
             clearInterval(timerRef.current);
-            stopDroneSound(); // Stop calming sound when timer finishes
+            stopCalmingSound(); // Stop calming sound when timer finishes
             setMessage('Meditation session complete! Good job.');
         }
 
         return () => clearInterval(timerRef.current);
     }, [isRunning, timeRemaining]); // Re-run when isRunning or timeRemaining changes
 
+    // Tone.js sound controls
+    const startCalmingSound = async () => {
+        if (!isSoundPlaying && currentSynthRef.current) {
+            await Tone.start(); // This starts the global AudioContext on user interaction
+            setIsSoundPlaying(true);
+            setMessage('Calming sound started...');
+
+            switch (selectedSoundType) {
+                case 'drone':
+                    currentSynthRef.current.triggerAttack("C3");
+                    break;
+                case 'rain':
+                    currentSynthRef.current.start();
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+
+    const stopCalmingSound = () => {
+        if (isSoundPlaying && currentSynthRef.current) {
+            setIsSoundPlaying(false);
+            setMessage('Calming sound stopped.');
+
+            switch (selectedSoundType) {
+                case 'drone':
+                    currentSynthRef.current.triggerRelease();
+                    break;
+                case 'rain':
+                    currentSynthRef.current.stop();
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+
+    // Integrate sound controls with timer buttons
     const startMeditationTimer = () => {
         if (meditationDuration > 0) {
             setTimeRemaining(meditationDuration * 60);
             setIsRunning(true);
-            startDroneSound(); // Start calming sound with timer
+            startCalmingSound(); // Automatically start sound with timer
             setMessage(`Starting ${meditationDuration}-minute meditation...`);
         } else {
             setMessage('Please set a duration greater than 0.');
@@ -891,7 +1043,7 @@ const MeditationSection = () => {
     const pauseMeditationTimer = () => {
         setIsRunning(false);
         clearInterval(timerRef.current);
-        stopDroneSound(); // Pause/stop calming sound with timer
+        stopCalmingSound(); // Automatically stop sound with timer
         setMessage('Meditation paused.');
     };
 
@@ -899,7 +1051,7 @@ const MeditationSection = () => {
         setIsRunning(false);
         clearInterval(timerRef.current);
         setTimeRemaining(meditationDuration * 60); // Reset to initial duration
-        stopDroneSound(); // Stop calming sound on reset
+        stopCalmingSound(); // Automatically stop sound on reset
         setMessage('Meditation reset.');
     };
 
@@ -907,24 +1059,6 @@ const MeditationSection = () => {
         const minutes = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    // Tone.js sound controls
-    const startDroneSound = async () => {
-        if (droneSynthRef.current && !isDronePlaying) {
-            await Tone.start(); // Ensure audio context is started on user interaction
-            droneSynthRef.current.triggerAttack("C3"); // Start a low C note
-            setIsDronePlaying(true);
-            setMessage('Calming sound started...');
-        }
-    };
-
-    const stopDroneSound = () => {
-        if (droneSynthRef.current && isDronePlaying) {
-            droneSynthRef.current.triggerRelease(); // Release the note
-            setIsDronePlaying(false);
-            setMessage('Calming sound stopped.');
-        }
     };
 
 
@@ -971,6 +1105,20 @@ const MeditationSection = () => {
                         disabled={isRunning}
                     />
                 </div>
+                {/* Calming Sound Type Selection */}
+                <div className="flex items-center space-x-2 mb-4">
+                    <label htmlFor="calming-sound-select" className="text-gray-300 text-lg">Sound Type:</label>
+                    <select
+                        id="calming-sound-select"
+                        value={selectedSoundType}
+                        onChange={(e) => setSelectedSoundType(e.target.value)}
+                        className="w-40 p-2 rounded-lg bg-gray-600 text-white border border-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        disabled={isRunning} // Disable changing sound type while timer is running
+                    >
+                        <option value="drone">Calming Drone</option>
+                        <option value="rain">Gentle Rain</option>
+                    </select>
+                </div>
                 <div className="text-6xl font-mono text-yellow-300 mb-6 drop-shadow-lg">
                     {formatTime(timeRemaining || meditationDuration * 60)}
                 </div>
@@ -994,23 +1142,23 @@ const MeditationSection = () => {
                     <button
                         onClick={resetMeditationTimer}
                         className="bg-red-600 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:bg-red-700 transition-all duration-300 transform hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75"
-                        disabled={isRunning} // Disable reset button if timer is running
                     >
                         Reset
                     </button>
                 </div>
                 {/* Calming Sound Controls (independent play/stop) */}
                 <div className="flex space-x-4 mt-6">
-                    {!isDronePlaying ? (
+                    {!isSoundPlaying ? (
                         <button
-                            onClick={startDroneSound}
+                            onClick={startCalmingSound}
                             className="bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-teal-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={isRunning} // Cannot play independently if timer is running
                         >
                             Play Calming Sound
                         </button>
                     ) : (
                         <button
-                            onClick={stopDroneSound}
+                            onClick={stopCalmingSound}
                             className="bg-cyan-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-cyan-700 transition-colors duration-300"
                         >
                             Stop Calming Sound
