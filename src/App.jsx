@@ -312,7 +312,43 @@ const Chatbot = () => {
             }
         }
     };
+// Add this to your JavaScript (likely in the bundled index-D3wu_AoK.js file)
+const recordButton = document.querySelector('#voice-journal button'); // Update selector as needed
+const transcriptArea = document.querySelector('#voice-journal textarea');
 
+let mediaRecorder;
+let audioChunks = [];
+
+recordButton.addEventListener('click', async () => {
+  try {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      
+      mediaRecorder.ondataavailable = (e) => {
+        audioChunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        // Here you would typically send to server for processing
+        // For now, we'll just show recording stopped
+        transcriptArea.placeholder = "Recording stopped. Processing...";
+        audioChunks = [];
+      };
+      
+      mediaRecorder.start();
+      recordButton.textContent = "Stop Recording";
+      transcriptArea.placeholder = "Recording... Speak now";
+    } else {
+      mediaRecorder.stop();
+      recordButton.textContent = "Start Recording";
+    }
+  } catch (error) {
+    console.error("Recording failed:", error);
+    transcriptArea.placeholder = "Error: " + error.message;
+  }
+});
 
     const sendMessage = async () => {
         if (!input.trim()) return;
